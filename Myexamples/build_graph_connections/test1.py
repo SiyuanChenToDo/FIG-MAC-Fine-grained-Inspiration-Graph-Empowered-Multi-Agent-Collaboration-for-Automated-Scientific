@@ -1,25 +1,36 @@
 import os
 import sys
 import json
-import time # 新增: 用于生成时间戳
+import time
+import re
 import numpy as np
 from itertools import product
+
 from camel.storages import Neo4jGraph
 from camel.embeddings import OpenAICompatibleEmbedding
+from camel.models import ModelFactory
+from camel.types import ModelPlatformType, ModelType
+from camel.configs import QwenConfig
+from camel.agents import ChatAgent
+from camel.messages import BaseMessage
 
 # =================================================================================
 # 1. 环境与数据库配置 (Environment and Database Configuration)
 # =================================================================================
 # --- 请确保您的环境变量已正确设置 ---
-os.environ["OPENAI_COMPATIBILITY_API_KEY"] = ""
-os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = ""
+os.environ["OPENAI_COMPATIBILITY_API_KEY"] = "sk-875e0cf57dd34df59d3bcaef4ee47f80"
+os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+# 关键修复：完全复制 test_graph.py 的工作配置
+os.environ["QWEN_API_KEY"] = os.environ["OPENAI_COMPATIBILITY_API_KEY"]
+os.environ["QWEN_API_BASE_URL"] = os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"]
 
 # --- Neo4j 数据库连接信息 ---
 # 注意：密码已替换为占位符，请使用您自己的真实密码。
 n4j = Neo4jGraph(
-    url="",
+    url="neo4j+s://b3980610.databases.neo4j.io",
     username="neo4j",
-    password="",
+    password="ta_T6_9gzxTfrTiWjRuUhO7Lm6fBbQG8TwxnSqHpoqk",
 )
 
 # --- 嵌入模型初始化 ---
@@ -27,6 +38,16 @@ embedding_model = OpenAICompatibleEmbedding(
     model_type="text-embedding-v2",
     api_key=os.environ["OPENAI_COMPATIBILITY_API_KEY"],
     url=os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"],
+)
+
+# --- 新增: LLM 评估模型初始化 ---
+# 使用与 test_graph.py 一致的、经过验证的配置
+llm_model = ModelFactory.create(
+    model_platform=ModelPlatformType.QWEN,
+    model_type=ModelType.COMETAPI_QWEN3_CODER_PLUS_2025_07_22,
+    model_config_dict=QwenConfig(temperature=0.1).as_dict(),
+    api_key=os.environ["QWEN_API_KEY"],
+    url=os.environ["QWEN_API_BASE_URL"],
 )
 
 print("✅ 环境和数据库配置完成。")
@@ -39,12 +60,51 @@ CONFIG = {
         "abstract": 0.4,
         "core_problem": 0.6
     },
-    "SIMILARITY_THRESHOLD": 0.75,
-    "NEW_RELATIONSHIP_TYPE": "POSSIBLY_RELATED",
+    "SIMILARITY_THRESHOLD": 0.7,
+    # --- 更新: 定义新的关系类型 ---
+    "RELATIONSHIP_TYPES": {
+        "INSPIRED": "POSSIBLY_INSPIRED", # A的solution能启发/解决B的问题
+        "RELATED": "POSSIBLY_RELATED"   # A的solution/领域与B的问题/领域相似
+    },
     # --- 缓存路径和维度配置 ---
     # 文件将保存为 embedding_cache.json 和 embedding_cache.npy
     "EMBEDDING_CACHE_BASE_PATH": "embedding_cache", 
-    "EMBEDDING_MODEL_DIM": 1536 # DashScope text-embedding-v2 的维度通常为 1536
+    "EMBEDDING_MODEL_DIM": 1536, # DashScope text-embedding-v2 的维度通常为 1536
+    
+    # --- 新增: LLM评估相关的配置 ---
+    "LLM_EVALUATION_PROMPT": """
+你是一个专业的科研助理，任务是分析两篇不同论文的核心内容，并判断它们之间的深层联系。
+
+**背景信息:**
+- **论文 A**: 提供了以下解决方案（Solution）。
+- **论文 B**: 正在研究其核心问题（Core Problem）和摘要（Abstract）中描述的内容。
+
+**你的任务:**
+请基于以下内容，判断论文 A 的解决方案是否能够对论文 B 的研究产生启发或存在关联。
+
+---
+**论文 A 的解决方案 (Solution from Paper A):**
+{solution_text}
+---
+**论文 B 的核心问题 (Core Problem from Paper B):**
+{paper_core_problem}
+---
+**论文 B 的摘要 (Abstract from Paper B):**
+{paper_abstract}
+---
+
+**判断标准:**
+1.  **启发关系 (INSPIRED)**: 如果论文 A 的解决方案可以直接或间接地应用于解决论文 B 的核心问题，或者为其提供一种新的思路、方法或技术路径，请判断为“启发关系”。
+2.  **相关关系 (RELATED)**: 如果论文 A 的解决方案所涉及的研究领域、技术、或问题与论文 B 的核心问题或摘要内容高度相似，但不能直接用于解决问题，而是属于同一范畴或相关领域，请判断为“相关关系”。
+3.  **无明确关系 (NONE)**: 如果两者之间没有明显的启发或相关性，请判断为“无明确关系”。
+
+**输出格式:**
+请严格按照以下 JSON 格式返回你的判断，不要包含任何额外的解释或代码块标记。
+{{
+  "relationship_type": "INSPIRED" | "RELATED" | "NONE",
+  "reasoning": "请在这里用一句话简要解释你的判断理由。"
+}}
+"""
 }
 print(f"✅ 核心参数配置完成，权重: {CONFIG['WEIGHTS']}, 阈值: {CONFIG['SIMILARITY_THRESHOLD']}")
 
@@ -178,6 +238,79 @@ def get_embeddings_with_caching(texts, cache):
     final_embeddings = [np.array(cache.get(text)) if cache.get(text) is not None else None for text in texts]
     return final_embeddings, cache
 
+# --- 新增: LLM 评估函数 ---
+def evaluate_relationship_with_llm(llm_model, solution_text, paper_abstract, paper_core_problem):
+    """使用 ChatAgent 判断两个文本片段之间的关系 (模仿 test_graph.py 的工作模式)。"""
+
+    prompt = CONFIG["LLM_EVALUATION_PROMPT"].format(
+        solution_text=solution_text,
+        paper_abstract=paper_abstract,
+        paper_core_problem=paper_core_problem
+    )
+
+    response_content = "" # 初始化在这里，以确保在异常处理中可用
+    try:
+        # 1. 创建一个 ChatAgent，模仿 test_graph.py 的调用方式
+        agent = ChatAgent(
+            system_message=BaseMessage.make_assistant_message(
+                role_name="Evaluator",
+                content="You are an AI assistant that follows instructions precisely and returns JSON."
+            ),
+            model=llm_model
+        )
+
+        # 2. 创建用户消息
+        user_msg = BaseMessage.make_user_message(role_name="User", content=prompt)
+
+        # 3. 使用 agent.step() 获取响应
+        print("DEBUG_LLM: Calling ChatAgent.step() with prompt...")
+        agent_response = agent.step(user_msg)
+        print(f"DEBUG_LLM: Raw response from agent.step(): {agent_response!r}")
+
+        # 4. 从响应中提取内容
+        if agent_response and not agent_response.terminated and agent_response.msg:
+            response_content = agent_response.msg.content
+        else:
+            print(f"  - ⚠️ Agent 响应终止或为空。响应: {agent_response!r}")
+            return "NONE", ""
+
+        print(f"DEBUG_LLM: Extracted response content: {response_content!r}")
+
+        result_dict = {} # 初始化为一个空字典
+
+        # 尝试直接解析整个响应内容为JSON
+        try:
+            parsed_json = json.loads(response_content)
+            if isinstance(parsed_json, dict): # 确认解析结果是一个字典
+                result_dict = parsed_json
+            else:
+                raise json.JSONDecodeError("Parsed JSON is not a dictionary", response_content, 0)
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                try:
+                    parsed_json = json.loads(json_str)
+                    if isinstance(parsed_json, dict):
+                        result_dict = parsed_json
+                    else:
+                        print(f"  - ⚠️ 提取的JSON片段解析后不是字典。片段: {json_str!r}, 结果: {parsed_json!r}")
+                except json.JSONDecodeError:
+                    print(f"  - ⚠️ 提取的JSON片段无法解析。片段: {json_str!r}")
+            else:
+                print(f"  - ⚠️ LLM响应中未找到有效的JSON格式。响应内容: {response_content!r}")
+        
+        if result_dict:
+            return result_dict.get("relationship_type", "NONE"), result_dict.get("reasoning", "")
+        else:
+            print(f"  - ⚠️ 最终LLM解析结果不是有效的JSON对象。原始响应: {response_content!r}")
+            return "NONE", ""
+
+    except Exception as e:
+        # 捕获其他未知错误，并打印详细信息
+        print(f"  - ❌ 调用LLM评估时出错: {e}. 原始响应: {response_content!r}")
+        return "NONE", ""
+
 print("✅ 辅助及缓存函数已定义。")
 
 # =================================================================================
@@ -259,11 +392,9 @@ def main():
         
         # **关键过滤逻辑: 确保 Paper 和 Solution 来自不同的论文**
         if paper['file_id'] == solution['file_id']:
-            # print(f"  - 💡 跳过 Paper({paper['file_id']}) 和 Solution({solution['file_id']})，因为它们属于同一篇论文。")
             continue 
 
         if paper['vectors']['abstract'] is None or paper['vectors']['core_problem'] is None or solution['vector'] is None:
-            # print(f"  - ⚠️ 跳过 Paper({paper['node_id']}) 和 Solution({solution['node_id']})，因为缺少向量。")
             continue
 
         sim_abstract = cosine_similarity(paper['vectors']['abstract'], solution['vector'])
@@ -272,32 +403,50 @@ def main():
         weighted_score = (sim_abstract * CONFIG['WEIGHTS']['abstract'] + 
                           sim_core_problem * CONFIG['WEIGHTS']['core_problem'])
         
+        # --- 阶段 1: 基于相似度进行初筛 ---
         if weighted_score >= CONFIG['SIMILARITY_THRESHOLD']:
-            link_creation_count += 1
-            print(f"  ✨ 发现潜在**跨论文**关联 (总分: {weighted_score:.4f}):")
-            print(f"     - Paper ID: {paper['file_id']} ({paper['node_id']})")
-            print(f"     - Solution ID: {solution['file_id']} ({solution['node_id']} - {solution['label']})")
+            print(f"\n  ✨ 初筛通过 (总分: {weighted_score:.4f})，准备进行LLM深度评估...")
+            print(f"     - 论文 A (Solution): {solution['file_id']} (Node: {solution['node_id']})")
+            print(f"     - 论文 B (Paper): {paper['file_id']} (Node: {paper['node_id']})")
             
-            # 使用 MERGE 语句在 Neo4j 中创建关系
-            merge_query = f"""
-            MATCH (p:paper), (s)
-            WHERE elementId(p) = '{paper['node_id']}' AND elementId(s) = '{solution['node_id']}'
-            MERGE (p)-[r:{CONFIG['NEW_RELATIONSHIP_TYPE']}]->(s)
-            SET r.weightedScore = {weighted_score:.4f},
-                r.abstractSimilarity = {sim_abstract:.4f},
-                r.coreProblemSimilarity = {sim_core_problem:.4f},
-                r.createdAt = timestamp()
-            """
-            try:
-                n4j.query(query=merge_query)
-                print(f"     ✅ 成功在图中创建 '{CONFIG['NEW_RELATIONSHIP_TYPE']}' 关系。")
-            except Exception as e:
-                print(f"     ❌ 创建关系失败: {e}")
+            # --- 阶段 2: 调用 LLM 进行精细化判断 ---
+            relationship_type, reasoning = evaluate_relationship_with_llm(
+                llm_model=llm_model,
+                solution_text=solution['text'],
+                paper_abstract=paper['abstract'],
+                paper_core_problem=paper['core_problem']
+            )
+            
+            if relationship_type in CONFIG["RELATIONSHIP_TYPES"]:
+                link_creation_count += 1
+                rel_type_str = CONFIG["RELATIONSHIP_TYPES"][relationship_type]
+                print(f"  - 🧠 LLM 判断结果: {relationship_type} ({rel_type_str})")
+                print(f"  - 💬 LLM 理由: {reasoning}")
+
+                # 使用 MERGE 语句在 Neo4j 中创建关系
+                merge_query = f"""
+                MATCH (p:paper), (s)
+                WHERE elementId(p) = '{paper['node_id']}' AND elementId(s) = '{solution['node_id']}'
+                MERGE (p)-[r:{rel_type_str}]->(s)
+                SET r.weightedScore = {weighted_score:.4f},
+                    r.abstractSimilarity = {sim_abstract:.4f},
+                    r.coreProblemSimilarity = {sim_core_problem:.4f},
+                    r.llmReasoning = "{reasoning.replace('"', "'")}",
+                    r.llmJudgement = "{relationship_type}",
+                    r.createdAt = timestamp()
+                """
+                try:
+                    n4j.query(query=merge_query)
+                    print(f"     ✅ 成功在图中创建 '{rel_type_str}' 关系。")
+                except Exception as e:
+                    print(f"     ❌ 创建关系失败: {e}")
+            else:
+                print(f"  - ⏭️ LLM 判断为无明确关系，跳过链接创建。")
 
     if link_creation_count == 0:
-        print("\n✅ 完成计算，未发现相似度高于阈值的跨论文 Paper-Solution 对。")
+        print("\n✅ 完成计算，未发现符合条件并经LLM确认的跨论文 Paper-Solution 对。")
     else:
-        print(f"\n🎉 流程结束！总共创建了 {link_creation_count} 条新的**跨论文** '{CONFIG['NEW_RELATIONSHIP_TYPE']}' 关系。")
+        print(f"\n🎉 流程结束！总共创建了 {link_creation_count} 条经LLM确认的新的跨论文关系。")
         
     # --- 新增: 保存更新后的缓存 ---
     save_embedding_cache(CONFIG["EMBEDDING_CACHE_BASE_PATH"], embedding_cache)
@@ -307,6 +456,6 @@ def main():
 # =================================================================================
 if __name__ == "__main__":
     print("=====================================================")
-    print("=== Neo4j Paper-Solution 加权语义链接脚本启动 (已优化跨论文过滤) ===")
+    print("=== Neo4j Paper-Solution 智能链接脚本 (LLM增强版) ===")
     print("=====================================================")
     main()
