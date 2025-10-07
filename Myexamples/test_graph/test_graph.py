@@ -1,3 +1,6 @@
+#图谱的检索存在冗余
+#为muti-agent系统提供信息
+#可以评估rag指标，做消融实验，证明数据集的价值
 import sys
 print(f"Python Version: {sys.version}")
 print(f"Sys Path: {sys.path}")
@@ -18,14 +21,18 @@ from camel.storages import FaissStorage, VectorRecord, VectorDBQuery
 import json
 import os
 from getpass import getpass
+import logging
+
+# Suppress verbose Neo4j warnings
+logging.getLogger("neo4j").setLevel(logging.ERROR)
 
 
 # # Prompt for the API key securely
 # mistral_api_key = "amPLA3bl3H42UZSZaW9vL1qBEFo8P3KK"
 # os.environ["MISTRAL_API_KEY"] = mistral_api_key
 
-os.environ["OPENAI_COMPATIBILITY_API_KEY"] = ""
-os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = ""
+os.environ["OPENAI_COMPATIBILITY_API_KEY"] = "sk-c1a6b588f7d543adb0412c5bc61bdd7b"
+os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 os.environ["QWEN_API_KEY"] = os.environ["OPENAI_COMPATIBILITY_API_KEY"]
@@ -34,9 +41,9 @@ os.environ["QWEN_API_BASE_URL"] = os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"
 
 # Set Neo4j instance
 n4j = Neo4jGraph(
-    url="",
+    url="neo4j+s://b3980610.databases.neo4j.io",
     username="neo4j",
-    password="",
+    password="ta_T6_9gzxTfrTiWjRuUhO7Lm6fBbQG8TwxnSqHpoqk",
 )
 
 
@@ -73,85 +80,96 @@ query="How can a gating mechanism be designed to selectively filter and fuse inf
 # 1. Setup paths and parameters
 JSON_FILE_PATH = 'Myexamples/data/final_custom_kg_papers.json'
 BASE_VDB_PATH = 'Myexamples/vdb/camel_faiss_storage'
-paper_attributes = [
-    "abstract", "core_problem", "related_work", "preliminary_innovation_analysis",
-    "basic_problem", "datasets", "experimental_results", "framework_summary"
-]
+node_attributes_to_vectorize = {
+    "paper": [
+        "abstract", "core_problem", "related_work",
+        "preliminary_innovation_analysis", "basic_problem", "datasets",
+        "experimental_results", "framework_summary"
+    ],
+    "research_question": ["research_question"],
+    "solution": ["solution"],
+}
 
 # 2. Build or load FAISS indexes for each attribute
 attribute_storages = {}
 embedding_model = camel_retriever.embedding_model
 
 print("--- Initializing Vector Database ---")
-for attr in paper_attributes:
-    storage_path = os.path.join(BASE_VDB_PATH, attr)
-    collection_name = f"paper_{attr}"
-    
-    # Check if storage exists by looking for the index file
-    index_file_path = os.path.join(storage_path, f"{collection_name}.index")
-    if os.path.exists(index_file_path):
-        print(f"Loading existing FAISS storage for '{attr}' from {storage_path}")
-        storage = FaissStorage(
-            vector_dim=embedding_model.get_output_dim(),
-            storage_path=storage_path,
-            collection_name=collection_name,
-        )
-        storage.load()
-    else:
-        print(f"Building FAISS storage for '{attr}'...")
-        os.makedirs(storage_path, exist_ok=True)
-        storage = FaissStorage(
-            vector_dim=embedding_model.get_output_dim(),
-            storage_path=storage_path,
-            collection_name=collection_name,
-        )
+for entity_type, attributes in node_attributes_to_vectorize.items():
+    for attr in attributes:
+        # Use a unique key for each entity type and attribute combination
+        storage_key = (entity_type, attr)
         
-        try:
-            with open(JSON_FILE_PATH, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error: Could not load or parse {JSON_FILE_PATH}: {e}")
-            continue
-
-        records_to_add = []
-        texts_to_embed = []
-        metadata_for_records = []
-
-        for entity in data.get("entities", []):
-            if entity.get("entity_type") == "paper":
-                paper_id = entity.get("source_id")
-                attribute_text = entity.get(attr)
-                if paper_id and attribute_text and isinstance(attribute_text, str) and attribute_text.strip():
-                    texts_to_embed.append(attribute_text)
-                    metadata_for_records.append({
-                        "paper_id": paper_id,
-                        "attribute_name": attr,
-                        "text": attribute_text 
-                    })
+        # Create nested directory structure: BASE_VDB_PATH/entity_type/attr
+        storage_path = os.path.join(BASE_VDB_PATH, entity_type, attr)
+        collection_name = f"{entity_type}_{attr}"
         
-        if texts_to_embed:
-            print(f"Embedding {len(texts_to_embed)} texts for '{attr}'...")
+        # Check if storage exists by looking for the index file
+        index_file_path = os.path.join(storage_path, f"{collection_name}.index")
+        if os.path.exists(index_file_path):
+            print(f"Loading existing FAISS storage for '{entity_type}.{attr}' from {storage_path}")
+            storage = FaissStorage(
+                vector_dim=embedding_model.get_output_dim(),
+                storage_path=storage_path,
+                collection_name=collection_name,
+            )
+            storage.load()
+        else:
+            print(f"Building FAISS storage for '{entity_type}.{attr}'...")
+            os.makedirs(storage_path, exist_ok=True)
+            storage = FaissStorage(
+                vector_dim=embedding_model.get_output_dim(),
+                storage_path=storage_path,
+                collection_name=collection_name,
+            )
             
-            # 分批处理，每批最多25个文本（阿里云DashScope的限制）
-            batch_size = 25
-            embeddings = []
+            try:
+                with open(JSON_FILE_PATH, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                print(f"Error: Could not load or parse {JSON_FILE_PATH}: {e}")
+                continue
+
+            records_to_add = []
+            texts_to_embed = []
+            metadata_for_records = []
+
+            for entity in data.get("entities", []):
+                if entity.get("entity_type") == entity_type:
+                    entity_id = entity.get("source_id")
+                    attribute_text = entity.get(attr)
+                    if entity_id and attribute_text and isinstance(attribute_text, str) and attribute_text.strip():
+                        texts_to_embed.append(attribute_text)
+                        metadata_for_records.append({
+                            "paper_id": entity_id,  # Keep original key for consistency
+                            "entity_type": entity_type,
+                            "attribute_name": attr,
+                            "text": attribute_text
+                        })
             
-            for i in range(0, len(texts_to_embed), batch_size):
-                batch_texts = texts_to_embed[i:i + batch_size]
-                print(f"  Processing batch {i//batch_size + 1}/{(len(texts_to_embed) + batch_size - 1)//batch_size}")
-                batch_embeddings = embedding_model.embed_list(objs=batch_texts)
-                embeddings.extend(batch_embeddings)
-            
-            for i, embedding in enumerate(embeddings):
-                records_to_add.append(
-                    VectorRecord(vector=embedding, payload=metadata_for_records[i])
-                )
-            
-            print(f"Adding {len(records_to_add)} records to '{attr}' storage...")
-            storage.add(records_to_add) # This also saves to disk
-            print(f"Successfully built and saved storage for '{attr}'.")
-    
-    attribute_storages[attr] = storage
+            if texts_to_embed:
+                print(f"Embedding {len(texts_to_embed)} texts for '{entity_type}.{attr}'...")
+                
+                # 分批处理，每批最多25个文本（阿里云DashScope的限制）
+                batch_size = 25
+                embeddings = []
+                
+                for i in range(0, len(texts_to_embed), batch_size):
+                    batch_texts = texts_to_embed[i:i + batch_size]
+                    print(f"  Processing batch {i//batch_size + 1}/{(len(texts_to_embed) + batch_size - 1)//batch_size}")
+                    batch_embeddings = embedding_model.embed_list(objs=batch_texts)
+                    embeddings.extend(batch_embeddings)
+                
+                for i, embedding in enumerate(embeddings):
+                    records_to_add.append(
+                        VectorRecord(vector=embedding, payload=metadata_for_records[i])
+                    )
+                
+                print(f"Adding {len(records_to_add)} records to '{entity_type}.{attr}' storage...")
+                storage.add(records_to_add) # This also saves to disk
+                print(f"Successfully built and saved storage for '{entity_type}.{attr}'.")
+        
+        attribute_storages[storage_key] = storage
 print("--- Vector Database Initialized ---\n")
 
 # 3. Perform search and format results
@@ -159,17 +177,18 @@ print("--- Performing Vector Search ---")
 query_embedding = embedding_model.embed(obj=query)
 
 all_results = []
-for attr, storage in attribute_storages.items():
+for (entity_type, attr), storage in attribute_storages.items():
     if storage.status().vector_count > 0:
         db_query = VectorDBQuery(query_vector=query_embedding, top_k=1)
         results = storage.query(query=db_query)
         if results:
             for res in results:
+                payload = res.record.payload
                 res_text = (
-                    f"Found in paper attribute '{res.record.payload.get('attribute_name', 'N/A')}':\n"
+                    f"Found in {payload.get('entity_type', 'N/A')} attribute '{payload.get('attribute_name', 'N/A')}':\n"
                     f"  - Similarity Score: {res.similarity:.4f}\n"
-                    f"  - Paper ID: {res.record.payload.get('paper_id', 'N/A')}\n"
-                    f"  - Content Snippet: {res.record.payload.get('text', '')}"
+                    f"  - Paper ID: {payload.get('paper_id', 'N/A')}\n"
+                    f"  - Content Snippet: {payload.get('text', '')}"
                 )
                 all_results.append(res_text)
 
@@ -203,33 +222,56 @@ for node in ans_element.nodes:
     
     # 新的、更强大的 Cypher 查询
     n4j_query = f"""
-    // 1. 找到所有属性中包含我们关键词的节点
+    // 1. Find nodes where any property contains the keyword (case-insensitive)
     MATCH (n)
-    WHERE 
-    // 遍历节点 n 的所有属性 (key)
-    any(key IN keys(n) 
-        // 检查属性值 (字符串类型) 是否包含我们的关键词
-        WHERE toString(n[key]) CONTAINS '{node.id}'
-    )
+    WHERE any(key IN keys(n) WHERE toLower(toString(n[key])) CONTAINS toLower('{node.id}'))
 
-    // 2. 获取这些节点的邻居信息
+    // 2. Find its direct neighbors
     MATCH (n)-[r]-(m)
 
-    // 3. 返回格式化的描述
-    RETURN 
-    'Node ' + coalesce(n.id, n.name, n.title, elementId(n)) + 
-    ' (label: ' + labels(n)[0] + ')' +
-    ' has relationship ' + type(r) + 
-    ' with Node ' + coalesce(m.id, m.name, m.title, elementId(m)) + 
-    ' (label: ' + labels(m)[0] + ')' 
+    // 3. Return meaningful, summarized information from the node properties
+    WITH n, m, r
+    LIMIT 5 // Limit the number of paths to avoid excessive output
+
+    RETURN
+        // Details for the primary node 'n'
+        "Found a '"+ labels(n)[0] + "' node. " +
+        CASE
+            WHEN 'paper' IN labels(n) THEN "Title: '" + coalesce(n.title, "N/A") + "'. Core Problem: '" + coalesce(n.core_problem, "N/A") + "'"
+            WHEN 'research_question_1' IN labels(n) THEN "It poses Research Question 1: '" + coalesce(n.research_question_1, "N/A") + "'"
+            WHEN 'research_question_2' IN labels(n) THEN "It poses Research Question 2: '" + coalesce(n.research_question_2, "N/A") + "'"
+            WHEN 'research_question_3' IN labels(n) THEN "It poses Research Question 3: '" + coalesce(n.research_question_3, "N/A") + "'"
+            WHEN 'research_question_4' IN labels(n) THEN "It poses Research Question 4: '" + coalesce(n.research_question_4, "N/A") + "'"
+            WHEN 'solution_1' IN labels(n) THEN "It provides Solution 1: '" + coalesce(n.solution_1, "N/A") + "'"
+            WHEN 'solution_2' IN labels(n) THEN "It provides Solution 2: '" + coalesce(n.solution_2, "N/A") + "'"
+            WHEN 'solution_3' IN labels(n) THEN "It provides Solution 3: '" + coalesce(n.solution_3, "N/A") + "'"
+            WHEN 'solution_4' IN labels(n) THEN "It provides Solution 4: '" + coalesce(n.solution_4, "N/A") + "'"
+            ELSE "Identifier: '" + coalesce(n.entity_name, elementId(n)) + "'"
+        END +
+        // Describe the relationship and the neighbor 'm'
+        " This node has a '" + type(r) + "' relationship with a '" + labels(m)[0] + "' node. " +
+        CASE
+            WHEN 'paper' IN labels(m) THEN "The related paper's title is: '" + coalesce(m.title, "N/A") + "'."
+            WHEN 'research_question_1' IN labels(m) THEN "The related question is: '" + coalesce(m.research_question_1, "N/A") + "'."
+            WHEN 'research_question_2' IN labels(m) THEN "The related question is: '" + coalesce(m.research_question_2, "N/A") + "'."
+            WHEN 'research_question_3' IN labels(m) THEN "The related question is: '" + coalesce(m.research_question_3, "N/A") + "'."
+            WHEN 'research_question_4' IN labels(m) THEN "The related question is: '" + coalesce(m.research_question_4, "N/A") + "'."
+            WHEN 'solution_1' IN labels(m) THEN "The related solution is: '" + coalesce(m.solution_1, "N/A") + "'."
+            WHEN 'solution_2' IN labels(m) THEN "The related solution is: '" + coalesce(m.solution_2, "N/A") + "'."
+            WHEN 'solution_3' IN labels(m) THEN "The related solution is: '" + coalesce(m.solution_3, "N/A") + "'."
+            WHEN 'solution_4' IN labels(m) THEN "The related solution is: '" + coalesce(m.solution_4, "N/A") + "'."
+            ELSE "The related node's Identifier is: '" + coalesce(m.entity_name, elementId(m)) + "'."
+        END
     AS Description
-    LIMIT 5 // 每个关键词最多返回5条相关信息，防止信息过载
     """
     
     result = n4j.query(query=n4j_query)
-    kg_result.extend(result)
+    # The result is a list of dicts, e.g., [{'Description': '...'}].
+    # We extract the string values before extending the list.
+    kg_result.extend([item['Description'] for item in result])
 
-kg_result = [item['Description'] for item in kg_result]
+# Remove duplicates from the knowledge graph results list of strings
+kg_result = list(dict.fromkeys(kg_result))
 
 # Show the result from knowledge graph database
 print(kg_result)
