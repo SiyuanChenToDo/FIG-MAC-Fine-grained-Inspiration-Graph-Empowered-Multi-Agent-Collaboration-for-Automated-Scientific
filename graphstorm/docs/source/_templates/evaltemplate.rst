@@ -1,0 +1,12 @@
+.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: {{ module }}
+
+
+{{ name | underline}}
+
+.. autoclass:: {{ name }}
+    :show-inheritance:
+    :members:
+    :member-order: bysource
+    :exclude-members: get_metric_comparator

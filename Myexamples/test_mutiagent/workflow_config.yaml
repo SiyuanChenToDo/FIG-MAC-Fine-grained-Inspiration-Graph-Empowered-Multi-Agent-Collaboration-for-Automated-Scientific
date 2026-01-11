@@ -1,0 +1,171 @@
+# Scientific Hypothesis Generation Workflow Configuration
+# Based on HypothesisTeam state machine design, provides simplified state management
+
+workflow:
+  name: "Scientific Hypothesis Generation Workflow"
+  description: "8-agent collaborative scientific hypothesis generation process"
+  version: "2.0"
+
+# Workflow state definitions
+states:
+  - name: "INIT"
+    display_name: "Initialization"
+    description: "Initialize hypothesis generation team and clear previous results"
+    agents: []
+    parallel: false
+    required: true
+    
+  - name: "LITERATURE"
+    display_name: "Literature Review"
+    description: "Literature review phase - executed by Scholar Scour"
+    agents: ["Scholar Scour"]
+    parallel: false
+    required: true
+    timeout: 300  # 5 minutes
+    
+  - name: "IDEATION"
+    display_name: "Creative Ideation"
+    description: "Creative ideation phase - executed by Idea Igniter"
+    agents: ["Idea Igniter"]
+    parallel: false
+    required: true
+    timeout: 300
+    
+  - name: "ANALYSIS"
+    display_name: "Parallel Analysis"
+    description: "Analysis and evaluation phase - three analysis agents execute in parallel"
+    agents: ["Dr. Qwen Technical", "Dr. Qwen Practical", "Prof. Qwen Ethics"]
+    parallel: true
+    required: true
+    timeout: 600  # 10 minutes for parallel execution
+    
+  - name: "SYNTHESIS"
+    display_name: "Synthesis Integration"
+    description: "Synthesis and integration phase - executed by Dr. Qwen Leader"
+    agents: ["Dr. Qwen Leader"]
+    parallel: false
+    required: true
+    timeout: 300
+    
+  - name: "REVIEW"
+    display_name: "Peer Review"
+    description: "Peer review phase - executed by Critic Crucible with quality scoring"
+    agents: ["Critic Crucible"]
+    parallel: false
+    required: true
+    timeout: 300
+    quality_check: true  # Enable quality threshold checking
+    
+  - name: "REVISION"
+    display_name: "Iterative Revision"
+    description: "Revision phase - executed by Dr. Qwen Leader based on review feedback"
+    agents: ["Dr. Qwen Leader"]
+    parallel: false
+    required: false  # Only executed if quality threshold not met
+    timeout: 300
+    iterative: true  # Mark as iterative phase
+    
+  - name: "POLISH"
+    display_name: "Final Polishing"
+    description: "Final polishing phase - executed by Prof. Qwen Editor"
+    agents: ["Prof. Qwen Editor"]
+    parallel: false
+    required: true
+    timeout: 300
+    
+  - name: "FINISH"
+    display_name: "Completion"
+    description: "Workflow completion state"
+    agents: []
+    parallel: false
+    required: true
+
+# State transition rules
+transitions:
+  INIT:
+    - target: "LITERATURE"
+      condition: "always"
+      
+  LITERATURE:
+    - target: "IDEATION"
+      condition: "success"
+    - target: "FINISH"
+      condition: "failure"
+      
+  IDEATION:
+    - target: "ANALYSIS"
+      condition: "success"
+    - target: "FINISH"
+      condition: "failure"
+      
+  ANALYSIS:
+    - target: "SYNTHESIS"
+      condition: "success"
+    - target: "FINISH"
+      condition: "failure"
+      
+  SYNTHESIS:
+    - target: "REVIEW"
+      condition: "success"
+    - target: "FINISH"
+      condition: "failure"
+      
+  REVIEW:
+    - target: "POLISH"
+      condition: "quality_met"  # Quality threshold met
+    - target: "REVISION"
+      condition: "needs_improvement"  # Quality below threshold, iterations remaining
+    - target: "POLISH"
+      condition: "max_iterations"  # Max iterations reached
+    - target: "FINISH"
+      condition: "failure"
+      
+  REVISION:
+    - target: "REVIEW"
+      condition: "always"  # After revision, go back to review
+      
+  POLISH:
+    - target: "FINISH"
+      condition: "always"
+
+# State to method mapping
+state_methods:
+  INIT: "_init_phase"
+  LITERATURE: "_literature_phase"
+  IDEATION: "_ideation_phase"
+  ANALYSIS: "_analysis_phase"
+  SYNTHESIS: "_synthesis_phase"
+  REVIEW: "_review_phase"
+  REVISION: "_revision_phase"
+  POLISH: "_polish_phase"
+  FINISH: "_finish_phase"
+
+# Global configuration
+global_config:
+  max_retries: 3
+  default_timeout: 300
+  enable_logging: true
+  log_level: "INFO"
+  enable_state_history: true
+  enable_performance_tracking: true
+  
+  # Iteration configuration (VriSci-v2 style)
+  iteration:
+    max_iterations: 3  # Maximum number of revision iterations
+    quality_threshold: 9.0  # Quality score threshold (1-10 scale)
+    enable_iteration: true  # Enable iterative improvement
+    track_iteration_progress: true  # Track quality scores across iterations
+
+# Error handling configuration
+error_handling:
+  on_timeout: "fail_state"  # fail_state, retry, skip
+  on_agent_error: "retry"   # retry, fail_state, skip
+  max_state_retries: 2
+  retry_delay: 10  # seconds
+
+# Performance monitoring configuration
+monitoring:
+  track_execution_time: true
+  track_memory_usage: false
+  track_agent_performance: true
+  log_state_transitions: true
