@@ -104,7 +104,7 @@ def get_critic_crucible_config() -> Dict[str, Any]:
         "model_type": "max",
         "tools": [],  # Criticism expert mainly relies on critical thinking
         "specialization": "Scientific criticism and quality control",
-        "output_format": "structured_json"
+        "output_format": "markdown"  # Actual output is Markdown, not JSON
     }
 
 
@@ -120,15 +120,28 @@ def validate_critic_config() -> bool:
     
     for field in required_fields:
         if field not in config or not config[field]:
+            print(f"Missing required field: {field}")
             return False
     
-    # Validate system prompt contains key elements
+    # Validate system prompt contains key elements (matching actual prompt content)
     prompt = config["system_prompt"]
-    required_elements = ["JSON", "critical_analyses", "overall_quality_score", "strengths", "weaknesses"]
+    required_elements = [
+        "Quality Score",
+        "Strengths", 
+        "Weaknesses",
+        "Critical Concerns",
+        "Detailed Improvement Suggestions",
+        "Missing Elements"
+    ]
     
+    missing_elements = []
     for element in required_elements:
         if element not in prompt:
-            return False
+            missing_elements.append(element)
+    
+    if missing_elements:
+        print(f"Missing required elements in prompt: {missing_elements}")
+        return False
     
     return True
 

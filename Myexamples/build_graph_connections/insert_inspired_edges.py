@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # 注意：多线程环境下每个线程最好有独立的 session 或者使用 driver 提供的线程安全机制
 # Camel 的 Neo4jGraph 内部实现可能不是完全线程优化的，但 driver 本身是线程安全的。
 n4j = Neo4jGraph(
-    url="bolt://localhost:17687",
+    url="bolt://localhost:7687",
     username="neo4j",
     password="ai4sci123456",
 )

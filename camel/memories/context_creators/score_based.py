@@ -52,7 +52,14 @@ class ScoreBasedContextCreator(BaseContextCreator):
         self, token_counter: BaseTokenCounter, token_limit: int
     ) -> None:
         self._token_counter = token_counter
-        self._token_limit = token_limit
+        # WORKAROUND: Override default 32768 limit to prevent context truncation
+        # The application code requests higher limits (40000+) but CAMEL may ignore them
+        if token_limit == 32768:
+            import os
+            override_limit = int(os.environ.get("CAMEL_CONTEXT_TOKEN_LIMIT", 40000))
+            self._token_limit = override_limit
+        else:
+            self._token_limit = token_limit
 
     @property
     def token_counter(self) -> BaseTokenCounter:

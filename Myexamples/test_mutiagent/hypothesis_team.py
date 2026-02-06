@@ -1,18 +1,22 @@
 """
-HypothesisTeam - VriSci-v2 style Team + Channel Architecture
+HypothesisTeam - FIG-MAC style Team + Channel Architecture
 Scientific hypothesis generation team collaboration system based on CAMEL framework
 
-Referencing VriSci-v2 Team class design, implementing state machine driven multi-agent collaboration
+Referencing FIG-MAC Team class design, implementing state machine driven multi-agent collaboration
 """
 
 import asyncio
 import json
 import logging
 import os
+import warnings
 from enum import Enum
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
+
+# Suppress transformers FutureWarning about deprecated environment variables
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 
 from camel.messages import BaseMessage
 from camel.types import OpenAIBackendRole, ModelType
@@ -32,7 +36,7 @@ from Myexamples.test_mutiagent.workflow_context_manager import WorkflowContextMa
 
 
 class TeamState(Enum):
-    """Team state enumeration - Similar to VriSci-v2 state machine design with iteration support"""
+    """Team state enumeration - Similar to FIG-MAC state machine design with iteration support"""
     INIT = "init"
     LITERATURE = "literature"  # Literature review phase
     IDEATION = "ideation"      # Creative ideation phase
@@ -41,13 +45,13 @@ class TeamState(Enum):
     REVIEW = "review"          # Peer review phase
     REVISION = "revision"      # Revision phase (iterative improvement)
     POLISH = "polish"          # Final polishing phase
-    EVALUATION = "evaluation"  # Final evaluation phase (VriSci-v2 standards)
+    EVALUATION = "evaluation"  # Final evaluation phase (FIG-MAC standards)
     FINISH = "finish"
 
 
 class HypothesisChannel:
     """
-    Asynchronous communication channel - Similar to VriSci-v2 Channel class
+    Asynchronous communication channel - Similar to FIG-MAC Channel class
     Responsible for message passing and coordination between agents
     """
     
@@ -96,7 +100,7 @@ class HypothesisChannel:
 
 class HypothesisTeam:
     """
-    Scientific hypothesis generation team - Similar to VriSci-v2 Team class
+    Scientific hypothesis generation team - Similar to FIG-MAC Team class
     Using state machine driven multi-agent collaboration mechanism
     """
     
@@ -109,13 +113,25 @@ class HypothesisTeam:
         self.logger = logging.getLogger(f"{__name__}.HypothesisTeam")
         self.debug_context_dir = Path("debug_context")
         
-        # Iteration control parameters (VriSci-v2 style)
+        # Iteration control parameters (FIG-MAC style)
         self.max_iterations: int = 3
-        self.quality_threshold: float = 7.5
+        self.quality_threshold: float = 8.0
         self.current_iteration: int = 0
         self.iteration_scores: List[float] = []
         self.polish_iterations: int = 1
         self.polish_rounds_completed: int = 0
+        
+        # Quality improvement tracking
+        self.improvement_history: List[Dict[str, Any]] = []  # Track improvements per iteration
+        self.actionable_items_per_iteration: List[List[str]] = []  # Store actionable items extracted each iteration
+        
+        # Track best version for rollback on regression
+        self.best_version: Dict[str, Any] = {
+            "score": 0.0,
+            "iteration": -1,
+            "synthesis": None,
+            "review": None
+        }
         
         # 工作流辅助器 - 简化状态转换逻辑
         self.workflow_helper = WorkflowHelper()
@@ -129,12 +145,19 @@ class HypothesisTeam:
         # 工作流输出管理器 - 阶段3完整流程输出
         self.output_manager = WorkflowOutputManager()
         
-        # CAMEL记忆系统输出管理器 - 阶段3.7重构 (基于VriSci-v2经验)
+        # CAMEL记忆系统输出管理器 - 阶段3.7重构 (基于FIG-MAC经验)
         self.camel_memory_manager = CAMELMemoryOutputManager()
         
         # Workflow-level context manager - Solve context truncation issues
-        self.workflow_context = WorkflowContextManager(token_limit=32768, model_type=ModelType.QWEN3_MAX)
-        self.logger.info("Initialized WorkflowContextManager with token_limit=32768, model=QWEN3_MAX")
+        # INCREASED token limit to reduce truncation of early phase results (Literature with RAG evidence)
+        self.workflow_context = WorkflowContextManager(token_limit=40000, model_type=ModelType.QWEN_MAX)
+        self.logger.info("Initialized WorkflowContextManager with token_limit=40000, model=QWEN_MAX")
+        
+        # CRITICAL: Force update token limit to ensure ScoreBasedContextCreator uses the correct value
+        # This is necessary because CAMEL's internal cache may use default 32768
+        self.workflow_context.token_limit = 40000
+        effective_limit = self.workflow_context.effective_token_limit
+        self.logger.info(f"✅ Effective token limit confirmed: {effective_limit}")
         
         # Fixed agent mapping - Stage 3 architecture fix (from planner specifications)
         self.FIXED_AGENT_MAPPING = {
@@ -196,7 +219,7 @@ class HypothesisTeam:
             }
         }
         
-        # State machine mapping - Similar to VriSci-v2 state_action design with iteration support
+        # State machine mapping - Similar to FIG-MAC state_action design with iteration support
         self.state_actions = {
             TeamState.INIT: self._init_phase,
             TeamState.LITERATURE: self._literature_phase,
@@ -242,22 +265,34 @@ class HypothesisTeam:
         return phase_mapping.get(self.state, "unknown")
     
     async def execute_hypothesis_generation(self, topic: str, max_iterations: int = 3,
-                                           quality_threshold: float = 7.5,
+                                           quality_threshold: float = 8.0,
                                            polish_iterations: int = 1) -> HypothesisTaskResult:
         """
         Execute complete hypothesis generation workflow
-        State machine driven asynchronous execution - Similar to VriSci-v2 execution mechanism
+        State machine driven asynchronous execution - Similar to FIG-MAC execution mechanism
         """
         self.current_topic = topic
         self.state = TeamState.INIT
         
-        # Set iteration parameters (VriSci-v2 style)
+        # Set iteration parameters (FIG-MAC style)
         self.max_iterations = max_iterations
         self.quality_threshold = quality_threshold
         self.current_iteration = 0
         self.iteration_scores = []
         self.polish_iterations = max(1, polish_iterations)
         self.polish_rounds_completed = 0
+        
+        # Reset improvement tracking for new workflow
+        self.improvement_history = []
+        self.actionable_items_per_iteration = []
+        
+        # Reset best version tracking
+        self.best_version = {
+            "score": 0.0,
+            "iteration": -1,
+            "synthesis": None,
+            "review": None
+        }
         
         # 开始工作流跟踪 (阶段3新功能)
         workflow_id = self.output_manager.start_workflow_tracking(topic)
@@ -356,7 +391,7 @@ class HypothesisTeam:
             )
     
     def _get_next_state(self) -> TeamState:
-        """State transition logic with iteration support - VriSci-v2 style"""
+        """State transition logic with iteration support - FIG-MAC style"""
         # Special handling for REVIEW state - check if iteration is needed
         if self.state == TeamState.REVIEW:
             return self._decide_after_review()
@@ -380,7 +415,7 @@ class HypothesisTeam:
         return state_map.get(self.state, TeamState.FINISH)
     
     def _decide_after_review(self) -> TeamState:
-        """Decide next state after review - implement iteration logic (VriSci-v2 style)"""
+        """Decide next state after review - implement iteration logic with quality improvement tracking and regression detection (FIG-MAC style)"""
         # Extract quality score from review results
         review_result = self.results.get("review")
         if not review_result or review_result.failed:
@@ -392,19 +427,60 @@ class HypothesisTeam:
         
         if quality_score is not None:
             self.iteration_scores.append(quality_score)
-            OutputFormatter.info(f"[ITERATION] Quality score: {quality_score:.2f}/10 (Threshold: {self.quality_threshold})")
             
-            # Check if quality threshold is met
-            if quality_score >= self.quality_threshold:
-                OutputFormatter.success(f"[ITERATION] Quality threshold met! Proceeding to final polish.")
+            # Update best version tracking
+            synthesis_result = self.results.get("synthesis")
+            if quality_score > self.best_version["score"]:
+                self.best_version = {
+                    "score": quality_score,
+                    "iteration": self.current_iteration,
+                    "synthesis": synthesis_result,
+                    "review": review_result
+                }
+                OutputFormatter.success(f"[BEST VERSION] New best score: {quality_score:.2f}/10 at iteration {self.current_iteration + 1}")
+            
+            # Calculate improvement trend
+            improvement_info = self._analyze_improvement_trend()
+            
+            OutputFormatter.info(f"[ITERATION] Quality score: {quality_score:.2f}/10 (Threshold: {self.quality_threshold})")
+            if improvement_info["has_previous"]:
+                OutputFormatter.info(f"[ITERATION] Improvement: {improvement_info['delta']:+.2f} (Trend: {improvement_info['trend']})")
+            
+            # Check for regression (score decreased significantly)
+            if improvement_info["trend"] == "regression":
+                OutputFormatter.warning(f"[REGRESSION DETECTED] Score dropped by {abs(improvement_info['delta']):.2f} points!")
+                if self.best_version["iteration"] >= 0:
+                    OutputFormatter.info(f"[ROLLBACK] Reverting to best version from iteration {self.best_version['iteration'] + 1} (score: {self.best_version['score']:.2f})")
+                    self._rollback_to_best_version()
+                OutputFormatter.info(f"[ITERATION] Stopping iteration due to quality regression.")
                 return TeamState.POLISH
             
             # Check if max iterations reached
             if self.current_iteration >= self.max_iterations - 1:
                 OutputFormatter.warning(f"[ITERATION] Max iterations ({self.max_iterations}) reached. Proceeding to polish.")
+                # If best version is not current, rollback before polishing
+                if self.best_version["iteration"] != self.current_iteration and self.best_version["iteration"] >= 0:
+                    OutputFormatter.info(f"[ROLLBACK] Using best version from iteration {self.best_version['iteration'] + 1} (score: {self.best_version['score']:.2f})")
+                    self._rollback_to_best_version()
                 return TeamState.POLISH
             
-            # Need another iteration
+            # Check if quality threshold is met
+            if quality_score >= self.quality_threshold:
+                # Even if threshold is met, check if we can still improve
+                if improvement_info["can_continue_improving"] and self.current_iteration < self.max_iterations - 1:
+                    OutputFormatter.success(f"[ITERATION] Threshold met ({quality_score:.2f} >= {self.quality_threshold}), but further improvement possible!")
+                    self.current_iteration += 1
+                    OutputFormatter.info(f"[ITERATION] Continuing to iteration {self.current_iteration + 1}/{self.max_iterations} for quality optimization")
+                    return TeamState.REVISION
+                else:
+                    OutputFormatter.success(f"[ITERATION] Quality threshold met! Proceeding to final polish.")
+                    # If best version is not current, rollback before polishing
+                    if self.best_version["iteration"] != self.current_iteration and self.best_version["iteration"] >= 0:
+                        OutputFormatter.info(f"[ROLLBACK] Using best version from iteration {self.best_version['iteration'] + 1} (score: {self.best_version['score']:.2f})")
+                        self._rollback_to_best_version()
+                    return TeamState.POLISH
+            
+            # Need another iteration to reach threshold
             self.current_iteration += 1
             OutputFormatter.info(f"[ITERATION] Starting iteration {self.current_iteration + 1}/{self.max_iterations}")
             return TeamState.REVISION
@@ -412,16 +488,142 @@ class HypothesisTeam:
             OutputFormatter.warning("[ITERATION] Could not extract quality score, proceeding to polish")
             return TeamState.POLISH
     
+    def _rollback_to_best_version(self):
+        """Rollback synthesis and review to the best version"""
+        if self.best_version["synthesis"] is not None:
+            self.results["synthesis"] = self.best_version["synthesis"]
+            OutputFormatter.info(f"[ROLLBACK] Synthesis restored to iteration {self.best_version['iteration'] + 1}")
+        if self.best_version["review"] is not None:
+            self.results["review"] = self.best_version["review"]
+            OutputFormatter.info(f"[ROLLBACK] Review restored to iteration {self.best_version['iteration'] + 1}")
+        # Update current score to best score for final report
+        if self.iteration_scores:
+            self.iteration_scores[-1] = self.best_version["score"]
+    
+    def _analyze_improvement_trend(self) -> dict:
+        """Analyze quality improvement trend across iterations"""
+        scores = self.iteration_scores
+        if len(scores) < 2:
+            return {
+                "has_previous": False,
+                "delta": 0.0,
+                "trend": "initial",
+                "can_continue_improving": True
+            }
+        
+        current = scores[-1]
+        previous = scores[-2]
+        delta = current - previous
+        
+        # Determine trend
+        if delta >= 0.5:
+            trend = "significant_improvement"
+        elif delta > 0:
+            trend = "modest_improvement"
+        elif delta == 0:
+            trend = "stagnant"
+        else:
+            trend = "regression"
+        
+        # Determine if we can continue improving
+        # Continue if: making good progress, not yet at diminishing returns
+        can_continue = (
+            trend in ["significant_improvement", "modest_improvement"] and
+            current < 9.5 and  # Don't push beyond 9.5 (excellent)
+            len(scores) < self.max_iterations
+        )
+        
+        return {
+            "has_previous": True,
+            "delta": delta,
+            "trend": trend,
+            "can_continue_improving": can_continue,
+            "all_scores": scores.copy()
+        }
+    
+    def _extract_actionable_items(self, review_content: str) -> List[str]:
+        """Extract actionable improvement items from review content"""
+        import re
+        
+        actionable_items = []
+        
+        try:
+            # Pattern 1: Extract from "Detailed Improvement Suggestions" section
+            # Look for suggestion headers (Suggestion 1:, #### Suggestion 1:, etc.)
+            suggestion_patterns = [
+                r'(?:Suggestion|Improvement)\s*\d+[\s:.-]+([^\n]+(?:\n(?!(?:Suggestion|Improvement)\s*\d+|#{1,4}\s|#{1,4}\s(?:Missing|Quality|Strengths|Weaknesses))[^\n]+)*)',
+                r'####\s+[^\n]+\n+([^#]+?)(?=\n####|\n#{1,3}\s|$)',  # #### headers content
+            ]
+            
+            for pattern in suggestion_patterns:
+                matches = re.findall(pattern, review_content, re.IGNORECASE | re.MULTILINE)
+                for match in matches:
+                    # Clean up the match
+                    item = match.strip()
+                    if item and len(item) > 20:  # Filter out very short matches
+                        # Truncate to first sentence or 200 chars
+                        first_sentence = re.split(r'[.!?]\s+', item)[0]
+                        actionable_items.append(first_sentence[:200])
+            
+            # Pattern 2: Extract bullet points under specific sections
+            section_patterns = [
+                r'(?:Missing Elements|What is Missing)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+                r'(?:Critical Concerns|Major Issues)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+                r'(?:Weaknesses|Limitations)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+            ]
+            
+            for pattern in section_patterns:
+                match = re.search(pattern, review_content, re.IGNORECASE)
+                if match:
+                    bullets = match.group(1)
+                    # Extract individual bullet points
+                    bullet_items = re.findall(r'[-*]\s*([^\n]+)', bullets)
+                    for item in bullet_items:
+                        item = item.strip()
+                        if item and len(item) > 10:
+                            actionable_items.append(item[:200])
+            
+            # Pattern 3: Extract sentences containing "should", "need to", "must", "add", "include"
+            imperative_patterns = [
+                r'(?:^|\n)\s*[-*]?\s*([^\n]*(?:should|need to|must|add|include|provide|specify)[^\n]{10,200})',
+            ]
+            
+            for pattern in imperative_patterns:
+                matches = re.findall(pattern, review_content, re.IGNORECASE)
+                for match in matches:
+                    item = match.strip()
+                    if item and item not in actionable_items:
+                        actionable_items.append(item[:200])
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_items = []
+            for item in actionable_items:
+                # Normalize for comparison
+                normalized = re.sub(r'\s+', ' ', item.lower())
+                if normalized not in seen and len(item) > 15:
+                    seen.add(normalized)
+                    unique_items.append(item)
+            
+            return unique_items[:15]  # Return top 15 items
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to extract actionable items: {e}")
+            return []
+    
     def _extract_quality_score(self, review_content: str) -> Optional[float]:
         """Extract quality score from Markdown review content"""
         import re
         
         try:
             # Pattern 1: Standard format "Quality Score: X.X/10"
+            # FIX: Added more flexible patterns for better extraction
             patterns = [
-                r'Quality Score[:\s*]+(\d+(?:\.\d+)?)\s*/\s*10',  # Quality Score: 8.5/10
-                r'Quality Score[:\s*]+(\d+(?:\.\d+)?)',            # Quality Score: 8.5
-                r'\*\*Quality Score\*\*[:\s]+(\d+(?:\.\d+)?)',    # **Quality Score**: 8.5
+                r'Quality Score[:\s=]+(\d+(?:\.\d+)?)\s*/\s*10',   # Quality Score: 8.5/10 or Quality Score = 8.5/10
+                r'Quality Score[:\s=]+(\d+(?:\.\d+)?)',             # Quality Score: 8.5 or Quality Score = 8.5
+                r'\*\*Quality Score\*\*[:\s=]+(\d+(?:\.\d+)?)',     # **Quality Score**: 8.5
+                r'\*Quality Score\*[:\s=]+(\d+(?:\.\d+)?)',          # *Quality Score*: 8.5
+                r'Quality Score\s+of\s+(\d+(?:\.\d+)?)',             # Quality Score of 8.5
             ]
             
             for pattern in patterns:
@@ -1015,7 +1217,7 @@ class HypothesisTeam:
     
     async def _execute_camel_native_task(self, agent: CamelNativeAgent, task_content: str, result_key: str) -> HypothesisTaskResult:
         """
-        CAMEL native task execution method - Based on VriSci-v2 step_async mechanism
+        CAMEL native task execution method - Based on FIG-MAC step_async mechanism
         Utilizing BaseAgent's native asynchronous methods and ChatAgentResponse mechanism
         Integrated CAMEL native error handling and timeout mechanisms
         """
@@ -1032,12 +1234,12 @@ class HypothesisTeam:
                 content=task_content
             )
             
-            # Use correct CAMEL native API for memory updates (VriSci-v2 mode)
+            # Use correct CAMEL native API for memory updates (FIG-MAC mode)
             if hasattr(agent, 'update_memory'):
                 agent.update_memory(task_message, OpenAIBackendRole.USER)
                 self.logger.info(f"Updated CAMEL memory with task message for {agent.role_name}")
             
-            # Get CAMEL native intelligent context (VriSci-v2 mode)
+            # Get CAMEL native intelligent context (FIG-MAC mode)
             if hasattr(agent, 'get_context_with_tokens'):
                 full_context, total_tokens = agent.get_context_with_tokens()
                 self.logger.info(f"CAMEL context: {total_tokens} tokens for {agent.role_name}")
@@ -1052,26 +1254,30 @@ class HypothesisTeam:
                         debug_path,
                     )
             
-            # Use CAMEL native step_async method (VriSci-v2 mode)
+            # Use CAMEL native step_async method (FIG-MAC mode)
             # 注意：已移除超时限制，允许任务完整运行
             # 如果环境变量设置了超时，则使用；否则不设置超时（None表示无超时）
             task_timeout_str = os.environ.get("AGENT_TASK_TIMEOUT")
+            camel_timeout = os.environ.get("CAMEL_MODEL_TIMEOUT", "600 (default)")
+            
             if task_timeout_str:
                 task_timeout = int(task_timeout_str)
+                OutputFormatter.info(f"[TIMEOUT] Using AGENT_TASK_TIMEOUT: {task_timeout}s | CAMEL_MODEL_TIMEOUT: {camel_timeout}s")
                 response = await asyncio.wait_for(
                     agent.step_async(task_message),
                     timeout=task_timeout
                 )
             else:
                 # 无超时限制，直接执行
+                OutputFormatter.info(f"[TIMEOUT] No task timeout set | CAMEL_MODEL_TIMEOUT: {camel_timeout}s")
                 response = await agent.step_async(task_message)
             
-            # Also add response to CAMEL native memory history (VriSci-v2 mode)
+            # Also add response to CAMEL native memory history (FIG-MAC mode)
             if hasattr(agent, 'update_memory'):
                 agent.update_memory(response.msg, OpenAIBackendRole.ASSISTANT)
                 self.logger.info(f"Updated CAMEL memory with response for {agent.role_name}")
             
-            # CAMEL记忆系统记录 (阶段3.7重构 - 基于VriSci-v2经验)
+            # CAMEL记忆系统记录 (阶段3.7重构 - 基于FIG-MAC经验)
             phase = self._get_current_phase_name()
             memory_id = self.camel_memory_manager.record_agent_conversation(
                 phase=phase,
@@ -1080,7 +1286,7 @@ class HypothesisTeam:
                 response=response
             )
             
-            # 简单内容提取 (VriSci-v2方法：从复杂提取转向简单保存)
+            # 简单内容提取 (FIG-MAC方法：从复杂提取转向简单保存)
             ai_content = response.msgs[0].content if response.msgs else ""
             is_real_ai = ai_content and not ai_content.startswith("Response to:")
             
@@ -1286,29 +1492,97 @@ class HypothesisTeam:
             OutputFormatter.info(f"Including RAG context ({len(rag_result.content)} chars) for synthesis grounding")
         
         # Create detailed synthesis task using workflow context
+        # STRATEGY: Pass RAG evidence directly (not through context manager) to avoid truncation
         synthesis_task = f"""
-        Based on all the analysis below, synthesize a comprehensive scientific hypothesis for '{self.current_topic}'.
-        
-        ## Previous Phase Results (Literature, Ideation, Analysis):
-        {context_string}
-        {rag_context}
-        
-        Please synthesize a comprehensive scientific hypothesis that includes:
-        1. **Executive Summary**: Clear statement of the core hypothesis (cite specific papers from RAG evidence)
-        2. **Background and Rationale**: Based on literature review findings (preserve technical details)
-        3. **Detailed Hypothesis**: Specific, testable predictions with clear variables (reference concrete methodologies)
-        4. **Supporting Analysis**: Integration of technical, practical, and significance analyses (maintain fine-grained details)
-        5. **Methodology**: Proposed experimental or analytical approach (build on specific datasets and techniques mentioned)
-        6. **Expected Outcomes**: Predicted results and their implications (grounded in specific prior results)
-        7. **Limitations & Future Directions**: Acknowledged constraints and next steps
-        
-        **CRITICAL REQUIREMENT**: Your synthesis MUST preserve fine-grained technical details from the RAG evidence.
-        Do NOT generalize or abstract away specific paper names, technical approaches, datasets, or experimental results.
-        Every claim should be traceable to specific sources in the provided context.
-        
-        Output should be a well-structured scientific hypothesis report with clear sections, supporting evidence, 
-        and detailed citations of specific papers and technical approaches.
-        """
+You are Dr. Qwen Leader, Chief Researcher. Synthesize a comprehensive scientific hypothesis for '{self.current_topic}'.
+
+## 1. WORKFLOW CONTEXT (Previous Phase Results):
+{context_string}
+
+{rag_context}
+
+## 2. SYNTHESIS REQUIREMENTS
+
+Create a publication-ready scientific hypothesis report with the following structure:
+
+### Executive Summary
+- 2-3 sentences capturing the core hypothesis
+- Reference the most important source paper from RAG evidence
+
+### Background and Rationale  
+- Synthesize the research gap identified in literature
+- Cite specific papers and their limitations
+- Build the logical case for your hypothesis
+
+### Detailed Hypothesis (THIS SECTION IS CRITICAL)
+
+**Core Mechanism** (2-3 paragraphs - SYNTHESIZE FROM MULTIPLE IDEAS):
+- **Integrate mechanisms from multiple ideas**: Don't just describe one idea's mechanism; show how mechanisms from different ideas can work together
+- What are the key components? How do they interact?
+- Use LaTeX for mathematical formulations
+- Reference specific techniques from RAG evidence AND from different ideas (e.g., "Combining the hierarchical gating from Idea 1 with the attention mechanism from Idea 3...")
+- Example: If Idea 1 proposes gating mechanism G and Idea 2 proposes attention mechanism A, describe a hybrid G+A approach
+
+**Technical Innovations** (INTEGRATE FROM ALL IDEAS - Bullet points with explanations):
+**CRITICAL**: Do NOT limit yourself to a single idea from the ideation phase. Extract and synthesize technical innovations from ALL promising ideas:
+
+List 5-8 specific technical innovations. For each:
+- **What**: The specific technique/method (can be from Idea 1, Idea 2, etc.)
+- **Why**: How it addresses the research gap
+- **How**: Concrete implementation details from RAG (algorithms, equations, architectures)
+- **Source**: Which idea(s) this innovation comes from
+
+**Integration Strategy**:
+- If Idea 1 proposes mechanism X and Idea 3 proposes mechanism Y, consider: "Can X and Y work together?"
+- Combine complementary approaches into hybrid mechanisms
+- Layer multiple innovations: foundation technique + enhancement A + enhancement B
+
+**Testable Predictions** (Quantitative where possible):
+- Prediction 1: "X will achieve Y% improvement over baseline Z"
+- Prediction 2: "Mechanism A will show B effect under C conditions"
+- Include expected effect sizes, performance thresholds
+
+### Supporting Analysis
+- Integrate technical feasibility assessment
+- Reference specific implementation challenges from RAG
+- Build unified argument for plausibility
+
+### Methodology
+- Proposed experimental approach
+- Specific datasets (cite from RAG)
+- Baselines for comparison (cite from RAG)
+- Evaluation metrics
+
+### Expected Outcomes
+- Predicted results grounded in prior work
+- Implications for the field
+
+### Limitations & Future Directions
+- Acknowledged constraints
+- Clear next steps
+
+## 3. CRITICAL SUCCESS CRITERIA
+
+1. **TECHNICAL DEPTH**: The Detailed Hypothesis section should be the longest and most detailed section (minimum 40% of total content)
+
+2. **RAG INTEGRATION**: Every subsection must reference specific papers, methods, or findings from the RAG evidence provided above
+
+3. **NO VAGUE CLAIMS**: Instead of "improved performance", say "F1 score improvement of 5-8% over Cross-Stitch Networks baseline"
+
+4. **CONCRETE MECHANISMS**: Describe exactly HOW your proposed mechanism works, not just WHAT it does
+
+## 4. ANTI-PATTERNS (AVOID THESE)
+
+❌ BAD: "We propose a novel gating mechanism that improves performance"
+✅ GOOD: "We propose HGAN, which extends GBM's [cite] hierarchical gating with layer-wise attention scores computed as $a_l = {{\\sigma}}(W_a h_l + b_a)$, enabling fine-grained information routing..."
+
+❌ BAD: "Our method will perform better than existing approaches"
+✅ GOOD: "HGAN is expected to achieve 85-87% F1 on SemEval-2014 Task 4, compared to 82% for GBM [cite] and 79% for Cross-Stitch Networks [cite]"
+
+---
+
+**OUTPUT**: Complete scientific hypothesis report following the structure above.
+"""
         
         OutputFormatter.info("Created comprehensive synthesis task")
         
@@ -1364,6 +1638,14 @@ class HypothesisTeam:
         critic_agent = self.agents.get("Critic Crucible")
         if not critic_agent:
             raise ValueError("Critic Crucible agent not found")
+        
+        # FIX: Clear Critic Crucible's chat history to ensure independent evaluation each time
+        # IMPORTANT: Only clear memory (chat history), NOT personality_memory (system prompt)
+        # personality_memory contains the agent's role definition ("Senior Reviewer for top-tier journal...")
+        # Clearing it would make the agent forget its role and evaluation standards
+        if hasattr(critic_agent, 'memory') and critic_agent.memory:
+            critic_agent.memory.clear()
+            self.logger.info("[ITERATION FIX] Critic Crucible chat history cleared (personality/system prompt preserved)")
         
         # Get synthesis from workflow context
         # We only need the latest synthesis, so retrieve it from workflow context
@@ -1473,7 +1755,7 @@ class HypothesisTeam:
             raise
     
     async def _revision_phase(self):
-        """Revision phase - iterative improvement based on review feedback (VriSci-v2 style)"""
+        """Revision phase - iterative improvement based on review feedback (FIG-MAC style)"""
         
         OutputFormatter.section(f"PHASE 5.{self.current_iteration + 1}: ITERATIVE REVISION (Iteration {self.current_iteration + 1}/{self.max_iterations})")
         OutputFormatter.info("[AGENT] Dr. Qwen Leader executing hypothesis revision")
@@ -1531,9 +1813,11 @@ class HypothesisTeam:
         
         OutputFormatter.info(f"[TOKEN] REVISION: {token_count}/{token_limit} ({usage_percent:.1f}%)")
         if usage_percent > 95:
-            OutputFormatter.warning(f"[CRITICAL] Token usage exceeds 95%!")
-        elif usage_percent > 80:
-            OutputFormatter.warning(f"[WARNING] Token usage exceeds 80%")
+            OutputFormatter.warning(f"[CRITICAL] Token usage exceeds 95%! Context truncation will occur!")
+        elif usage_percent > 85:
+            OutputFormatter.warning(f"[WARNING] Token usage exceeds 85%! Risk of losing early context!")
+        elif usage_percent > 70:
+            OutputFormatter.info(f"[INFO] Token usage is high ({usage_percent:.1f}%). Consider reducing iteration count.")
             
         OutputFormatter.info(f"[CONTEXT] Retrieved workflow context for revision: {context_tokens} tokens")
         OutputFormatter.info(f"[CONTEXT] Context string length: {len(context_string)} chars")
@@ -1548,60 +1832,76 @@ class HypothesisTeam:
         else:
             OutputFormatter.success("[CONTEXT] Complete content preserved (no truncation)")
         
-        # Create detailed revision task (VriSci-v2 style iterative improvement)
+        # Extract actionable items from review for tracking
+        actionable_items = self._extract_actionable_items(review_content)
+        if actionable_items:
+            OutputFormatter.info(f"[REVISION] Extracted {len(actionable_items)} actionable improvement items from review")
+            for i, item in enumerate(actionable_items[:5], 1):  # Show first 5
+                OutputFormatter.info(f"  {i}. {item[:80]}...")
+        
+        # Create detailed revision task with strict improvement requirements
         revision_task = f"""
         You are Dr. Qwen Leader, the chief researcher responsible for synthesizing and refining scientific hypotheses.
         
         **REVISION ITERATION {self.current_iteration + 1}/{self.max_iterations}**
         
-        The current hypothesis has received peer review feedback with a quality score of {quality_score:.2f}/10.
-        The target quality threshold is {self.quality_threshold}/10.
+        Current quality score: {quality_score:.2f}/10 | Target: {self.quality_threshold}/10 | Goal: EXCEED target with SUBSTANTIAL improvements
         
-        ## Context (Current Hypothesis Summary + Full Review Feedback):
+        ## Context (Current Hypothesis + Full Review Feedback):
         {context_string}
         
         ## Your Task:
-        Revise and improve the hypothesis to address ALL issues raised in the peer review. 
-        **You MUST systematically implement EACH improvement suggestion provided in the review.**
+        Produce a SUBSTANTIALLY IMPROVED hypothesis that addresses ALL review feedback. **Surface-level changes are NOT acceptable.**
         
-        ### Revision Strategy:
+        ### Mandatory Improvement Checklist:
         
-        1. **Address Major Issues**: Fix all critical problems identified in the review
-           - For each major issue, implement the specific solution suggested
-           - Add concrete technical details (algorithms, equations, baselines, datasets)
+        For EACH item below, you MUST explicitly implement concrete changes:
         
-        2. **Implement Improvement Suggestions**: Go through EACH suggestion and:
-           - Add the specific sections, equations, or details mentioned
-           - Include the technical specifications provided (e.g., dataset splits, hyperparameters)
-           - Integrate baseline comparisons if suggested
-           - Add mathematical formulations if requested
+        **1. Critical Issues (Must Fix)**
+        - [ ] All "Critical Concerns" from review are resolved with specific technical solutions
+        - [ ] Every "Weakness" has been addressed with concrete improvements
         
-        3. **Add Missing Elements**: Include any important aspects noted as missing
-           - If review mentions missing baselines, add explicit comparison with named methods
-           - If review mentions missing equations, add mathematical formulations
-           - If review mentions missing datasets details, add specific numbers and preprocessing steps
+        **2. Detailed Suggestions (Implement ALL)**
+        {chr(10).join([f"        - [ ] Suggestion {i+1}: {item[:100]}..." for i, item in enumerate(actionable_items[:8])]) if actionable_items else "        - [ ] All detailed improvement suggestions from review implemented with specific technical details"}
         
-        4. **Enhance Technical Rigor**: Improve methodological soundness
-           - Add specific experimental protocols suggested
-           - Include evaluation metrics and expected performance ranges
-           - Add architectural diagrams or algorithmic pseudocode if mentioned
+        **3. Missing Elements (Add ALL)**
+        - [ ] All missing components identified in review are added
+        - [ ] Specific datasets, methods, or baselines mentioned are included
         
-        5. **Maintain Strengths**: Preserve the strong points identified in the review
+        **4. Quality Dimensions Improvement (Target +1.0 for each)**
+        - [ ] Technical Soundness: Enhanced with rigorous methodology
+        - [ ] Novelty: Strengthened innovative aspects
+        - [ ] Feasibility: Concrete implementation details added
+        - [ ] Clarity: Improved explanation and structure
         
-        **CRITICAL REQUIREMENTS**:
-        - The revised hypothesis MUST address EVERY specific improvement suggestion from the review
-        - When review says "add X", you MUST add X in the revised version
-        - When review specifies concrete details (algorithms, datasets, metrics), you MUST include them
-        - Aim to achieve a quality score of {self.quality_threshold}/10 or higher
-        - Maintain the comprehensive scientific format with all required sections
-        - Keep the hypothesis testable and falsifiable
+        ### Strict Requirements for SUBSTANTIAL Revision:
         
-        **Example of Good Revision**:
-        - If review says: "Add comparison with Cross-stitch Networks [Ruder+ 2017]"
-        - You MUST add: A subsection comparing GBM with Cross-stitch Networks, describing its architecture and expected performance
+        1. **NO COSMETIC CHANGES**: Don't just rephrase sentences. Add NEW content, NEW analysis, NEW technical details.
         
-        Output should be the complete revised hypothesis as a standalone scientific document.
-        Do NOT include meta-commentary about the revision process - just provide the improved hypothesis.
+        2. **SPECIFIC TECHNICAL ADDITIONS Required**:
+           - If review mentions "add baselines", include: method names, expected performance numbers, comparison tables
+           - If review mentions "add equations", include: LaTeX-formatted mathematical formulations with variable definitions
+           - If review mentions "more details on datasets", include: dataset sizes, preprocessing steps, train/val/test splits
+           - If review mentions "experimental protocol", include: hyperparameters, training procedures, evaluation metrics
+        
+        3. **Measurable Improvements**:
+           - Add at least 3-5 new technical elements (equations, algorithms, comparisons, datasets)
+           - Expand each section by 20-30% with substantive content
+           - Include specific citations and references where suggested
+        
+        4. **Quality Score Target**: Aim for {min(quality_score + 1.0, 9.5):.1f}/10 or higher (current: {quality_score:.2f}/10)
+        
+        ### Example of SUBSTANTIAL vs Cosmetic Changes:
+        
+        **COSMETIC (UNACCEPTABLE)**:
+        - Original: "We use a neural network for prediction."
+        - Bad Revision: "We utilize a deep neural network architecture for making predictions." (Just rewording!)
+        
+        **SUBSTANTIAL (REQUIRED)**:
+        - Original: "We use a neural network for prediction."
+        - Good Revision: "We employ a 12-layer Transformer architecture with 768 hidden dimensions, 12 attention heads, and GELU activation. Training uses AdamW optimizer with learning rate 1e-4, β1=0.9, β2=0.999, warmup steps 1000, and batch size 32. We compare against ResNet-50 (78.5% accuracy) and ViT-Base (81.2% accuracy) baselines on ImageNet-1K dataset (1.28M training images, 50K validation)."
+        
+        **Output**: Complete revised hypothesis document with ALL required improvements implemented. The revised version should be noticeably more comprehensive, rigorous, and detailed than the original.
         """
         
         OutputFormatter.info("Created comprehensive revision task")
@@ -1615,17 +1915,30 @@ class HypothesisTeam:
             execution_time = time.time() - start_time
             
             # Update synthesis result with revised version
+            # FIX: Save intermediate version for tracking
+            self.results[f"synthesis_v{self.current_iteration}"] = result
             self.results["synthesis"] = result
             
             if not result.failed:
                 OutputFormatter.success(f"Hypothesis revision completed in {execution_time:.2f} seconds")
                 
-                # Debug info
-                # raw_content = result.content
-                # OutputFormatter.warning(f"[DEBUG] Revised hypothesis length: {len(raw_content)} chars")
-                # OutputFormatter.info("Revised Hypothesis Preview:")
-                # preview = raw_content[:500] + "..." if len(raw_content) > 500 else raw_content
-                # print(f"{preview}")
+                # Record improvement history
+                self.actionable_items_per_iteration.append(actionable_items)
+                improvement_record = {
+                    "iteration": self.current_iteration,
+                    "quality_score_before": quality_score,
+                    "actionable_items_count": len(actionable_items),
+                    "actionable_items": actionable_items[:5],  # Store top 5
+                    "execution_time": execution_time,
+                    "content_length_before": len(synthesis_content),
+                    "content_length_after": len(result.content)
+                }
+                self.improvement_history.append(improvement_record)
+                
+                # Show improvement summary
+                OutputFormatter.info(f"[IMPROVEMENT TRACKING] Iteration {self.current_iteration + 1}:")
+                OutputFormatter.info(f"  - Actionable items identified: {len(actionable_items)}")
+                OutputFormatter.info(f"  - Content expansion: {len(synthesis_content)} → {len(result.content)} chars")
                 
                 # Show iteration progress
                 if self.iteration_scores:
@@ -1677,43 +1990,58 @@ class HypothesisTeam:
         
         try:
             rounds_required = self.polish_iterations - self.polish_rounds_completed
-            OutputFormatter.info(f"[CONTEXT] Using workflow context for polish phase (rounds remaining: {rounds_required})")
+            OutputFormatter.info(f"[POLISH] Starting polish phase (rounds remaining: {rounds_required})")
             
             for round_idx in range(rounds_required):
                 current_round = self.polish_rounds_completed + 1
                 OutputFormatter.section(f"[POLISH ROUND {current_round}/{self.polish_iterations}]")
                 
-                # Get context from workflow context manager
-                context_string, context_tokens = self.workflow_context.get_context_as_string("polish")
-                token_count, token_limit = self.workflow_context.get_token_usage()
-                usage_percent = (token_count / token_limit) * 100 if token_limit > 0 else 0
+                # For the first round, use full content directly to avoid context truncation
+                # For subsequent rounds, use the result from previous round
+                if current_round == 1:
+                    # Use full synthesis content directly (not through context manager to avoid truncation)
+                    full_content = synthesis_content
+                    full_review = review_content
+                    OutputFormatter.info(f"[POLISH] Using full synthesis content: {len(full_content)} chars")
+                else:
+                    # For subsequent rounds, use the polished result from previous round
+                    prev_result = self.results.get("final_synthesis")
+                    if prev_result and not prev_result.failed:
+                        full_content = prev_result.content
+                    else:
+                        full_content = synthesis_content
+                    full_review = review_content
+                    OutputFormatter.info(f"[POLISH] Using previous polished content: {len(full_content)} chars")
                 
-                OutputFormatter.info(f"[TOKEN] POLISH ROUND {current_round}: {token_count}/{token_limit} ({usage_percent:.1f}%)")
-                if usage_percent > 95:
-                    OutputFormatter.warning(f"[CRITICAL] Token usage exceeds 95%!")
-                OutputFormatter.info(f"[CONTEXT] Retrieved workflow context for polish: {context_tokens} tokens")
-                
-                # Create detailed polishing task (aligned with backup version)
+                # Create detailed polishing task with FULL content
                 polish_task = f"""
-                Polish and refine the scientific hypothesis below based on the comprehensive peer review feedback. 
-                Improve clarity, presentation, and address the specific issues raised in the review.
+You are Prof. Qwen Editor, an expert scientific editor. Polish and refine the scientific hypothesis below based on the comprehensive peer review feedback.
+
+## FULL SCIENTIFIC HYPOTHESIS (to be polished):
+{full_content}
+
+## PEER REVIEW FEEDBACK:
+{full_review}
+
+## Your Task:
+Produce a final polished version that:
+1. **Addresses ALL Review Comments**: Systematically incorporate every specific feedback and suggestion
+2. **Improves Clarity**: Enhance readability, flow, and presentation throughout the entire document
+3. **Strengthens Arguments**: Reinforce weak points identified in review with additional evidence or reasoning
+4. **Corrects ALL Issues**: Fix any technical, methodological, or formatting problems
+5. **Maintains Complete Structure**: Keep the comprehensive scientific format with ALL sections intact
+6. **Adds Missing Elements**: Include every important aspect noted as missing in the review
+
+## CRITICAL REQUIREMENTS:
+- You MUST output the COMPLETE document, not a summary or excerpt
+- Preserve ALL sections: Executive Summary, Background, Hypothesis, Methodology, Analysis, etc.
+- Ensure the output is publication-ready and professionally formatted
+- The output should be a standalone scientific hypothesis document suitable for submission
+
+Output the complete, polished scientific hypothesis document below:
+"""
                 
-                ## Previous Context (Latest Synthesis + Review Feedback):
-                {context_string}
-                
-                Please produce a final polished version that:
-                1. **Addresses Review Comments**: Incorporate specific feedback and suggestions
-                2. **Improves Clarity**: Enhance readability and presentation
-                3. **Strengthens Arguments**: Reinforce weak points identified in review
-                4. **Corrects Issues**: Fix any technical or methodological problems
-                5. **Maintains Structure**: Keep the comprehensive scientific format
-                6. **Adds Missing Elements**: Include any important aspects noted as missing
-                
-                Output should be the final, publication-ready scientific hypothesis with all improvements incorporated.
-                Ensure the result is a complete, standalone scientific hypothesis document.
-                """
-                
-                OutputFormatter.info("Created comprehensive polishing task")
+                OutputFormatter.info("Created comprehensive polishing task with full content")
                 
                 # Execute polishing with timing
                 import time
@@ -1755,10 +2083,10 @@ class HypothesisTeam:
                 OutputFormatter.info(f"[CONTEXT] Polish phase completed ({self.polish_rounds_completed}/{self.polish_iterations})")
     
     async def _evaluation_phase(self):
-        """Final evaluation phase using VriSci-v2 standards"""
+        """Final evaluation phase using FIG-MAC standards"""
         
         OutputFormatter.section("PHASE 7: FINAL EVALUATION")
-        OutputFormatter.info("[EVALUATION] Executing VriSci-v2 multi-dimensional assessment")
+        OutputFormatter.info("[EVALUATION] Executing FIG-MAC multi-dimensional assessment")
         
         # Get final synthesis result for evaluation
         final_synthesis = self.results.get("final_synthesis")
@@ -1783,7 +2111,7 @@ class HypothesisTeam:
             try:
                 # Create FinalEvaluationAgent instance
                 evaluation_agent = FinalEvaluationAgent()
-                OutputFormatter.info(f"Created FinalEvaluationAgent with VriSci-v2 standards (attempt {attempt + 1}/{max_retries})")
+                OutputFormatter.info(f"Created FinalEvaluationAgent with FIG-MAC standards (attempt {attempt + 1}/{max_retries})")
                 
                 # Extract content for evaluation
                 hypothesis_content = final_synthesis.content
@@ -1824,12 +2152,13 @@ class HypothesisTeam:
             internal_scores = self._extract_internal_scores()
             
             # Calculate integrated final score (25% internal + 75% external)
-            integrated_score = self._calculate_final_score(internal_scores, external_scores)
+            # Pass final_rating from FinalEvaluationAgent (already correctly weighted)
+            integrated_score = self._calculate_final_score(internal_scores, external_scores, final_rating)
             
             # Create comprehensive evaluation result
             evaluation_metadata = {
                 "evaluation_agent": "FinalEvaluationAgent",
-                "evaluation_standards": "VriSci-v2",
+                "evaluation_standards": "FIG-MAC",
                 "execution_time": execution_time,
                 "external_rating": final_rating,
                 "internal_scores": internal_scores,
@@ -1929,31 +2258,46 @@ class HypothesisTeam:
             self.logger.warning(f"Failed to extract internal scores: {e}")
             return [5.0]  # Default score
     
-    def _calculate_final_score(self, internal_scores: List[float], external_scores: dict) -> float:
-        """Calculate final score using 25% internal + 75% external weighting"""
+    def _calculate_final_score(self, internal_scores: List[float], external_scores: dict, 
+                               external_rating: float = None) -> float:
+        """Calculate final score using 25% internal + 75% external weighting
+        
+        Args:
+            internal_scores: List of internal quality scores from peer review
+            external_scores: Dict of 8-dimensional evaluation scores from FinalEvaluationAgent
+            external_rating: Pre-calculated external rating from FinalEvaluationAgent (preferred)
+        
+        Note:
+            FinalEvaluationAgent already applies weights and calculates final_rating correctly:
+            - Weights: clarity(0.5), relevance(1.0), structure(0.5), conciseness(0.5), 
+                      technical_accuracy(1.0), engagement(1.0), originality(1.0), feasibility(1.0)
+            - Total weight = 6.5, final_rating = weighted_total / 6.5 (1-10 scale)
+        """
         try:
             # Calculate internal score average (already normalized to 1-10)
             internal_avg = sum(internal_scores) / len(internal_scores) if internal_scores else 5.0
             
-            # Calculate external score average from 8 dimensions with weight adjustment
-            weighted_total = 0
-            original_5point_dimensions = {"clarity", "structure", "conciseness"}
-            
-            for dimension, dimension_data in external_scores.items():
-                if isinstance(dimension_data, dict) and 'score' in dimension_data:
-                    score = dimension_data['score']
-                    if isinstance(score, (int, float)) and 1 <= score <= 10:
-                        # Apply weight adjustment for original 5-point scale dimensions
-                        if dimension in original_5point_dimensions:
-                            weighted_total += float(score) / 2  # 50% weight (contributes max 5 points)
-                        else:
-                            weighted_total += float(score)  # 100% weight (contributes max 10 points)
-            
-            # Calculate external average: weighted_total/65*10 to map to 1-10 scale
-            external_avg = (weighted_total / 65) * 10 if weighted_total > 0 else 5.0
+            # Use pre-calculated external rating if available (correctly weighted by FinalEvaluationAgent)
+            if external_rating is not None and isinstance(external_rating, (int, float)):
+                external_avg = float(external_rating)
+                OutputFormatter.info(f"[SCORING] Using FinalEvaluationAgent rating: {external_avg:.2f}/10")
+            else:
+                # Fallback: Calculate external average directly from 8 dimensions
+                # All dimensions are on 1-10 scale, use simple average
+                scores = []
+                for dimension, dimension_data in external_scores.items():
+                    if isinstance(dimension_data, dict) and 'score' in dimension_data:
+                        score = dimension_data['score']
+                        if isinstance(score, (int, float)) and 1 <= score <= 10:
+                            scores.append(float(score))
+                
+                external_avg = sum(scores) / len(scores) if scores else 5.0
+                OutputFormatter.info(f"[SCORING] Calculated external average: {external_avg:.2f}/10")
             
             # Apply 25% internal + 75% external weighting
             final_score = internal_avg * 0.25 + external_avg * 0.75
+            
+            OutputFormatter.info(f"[SCORING] Internal: {internal_avg:.2f} × 25% + External: {external_avg:.2f} × 75% = {final_score:.2f}")
             
             return round(final_score, 2)
             

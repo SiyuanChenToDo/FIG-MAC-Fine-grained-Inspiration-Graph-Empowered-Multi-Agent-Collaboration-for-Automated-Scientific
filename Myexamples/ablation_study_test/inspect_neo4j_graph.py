@@ -12,7 +12,7 @@ print("连接到 Neo4j 数据库...")
 print("=" * 60)
 
 n4j = Neo4jGraph(
-    url="bolt://localhost:17687",
+    url="bolt://localhost:7687",
     username="neo4j",
     password="ai4sci123456",
 )

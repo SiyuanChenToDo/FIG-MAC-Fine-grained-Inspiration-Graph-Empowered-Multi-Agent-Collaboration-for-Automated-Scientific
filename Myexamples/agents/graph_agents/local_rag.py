@@ -241,14 +241,14 @@ def run_local_rag(
                 "research_question": ["research_question"],
                 "solution": ["solution"],
             }
-        else:
-            # 旧结构：仅paper实体类型（向后兼容）
-            if paper_attributes is None:
-                paper_attributes = [
-                    "abstract", "core_problem", "related_work",
-                    "preliminary_innovation_analysis", "framework_summary"
-                ]
-            attributes_to_vectorize = {"paper": paper_attributes}
+        # else:
+        #     # 旧结构：仅paper实体类型（向后兼容）
+        #     if paper_attributes is None:
+        #         paper_attributes = [
+        #             "abstract", "core_problem", "related_work",
+        #             "preliminary_innovation_analysis", "framework_summary"
+        #         ]
+        #     attributes_to_vectorize = {"paper": paper_attributes}
 
     env_enabled_attrs = os.environ.get("LOCAL_RAG_ENABLED_ATTRIBUTES")
     if enabled_attributes is None and env_enabled_attrs:

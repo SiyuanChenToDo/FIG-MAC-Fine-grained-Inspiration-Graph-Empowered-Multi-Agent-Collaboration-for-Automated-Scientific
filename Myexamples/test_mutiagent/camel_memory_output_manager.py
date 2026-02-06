@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CAMEL Memory-Based Output Manager
-Based on VriSci-v2 experience and CAMEL native memory system integration
+Based on FIG-MAC experience and CAMEL native memory system integration
 
 Core Design Philosophy:
 - From "Complex Extraction" to "Simple Storage"
@@ -30,7 +30,7 @@ from Myexamples.test_mutiagent.camel_logger_formatter import OutputFormatter
 
 def extract_json_from_text(text: str) -> Optional[str]:
     """
-    Simple JSON extraction from text (VriSci-v2 inspired)
+    Simple JSON extraction from text (FIG-MAC inspired)
     Extracts JSON content between ```json and ``` or { and }
     """
     import re
@@ -68,7 +68,7 @@ class CAMELMemoryOutputManager:
     """
     CAMEL Memory-Based Output Manager
     
-    Based on VriSci-v2 successful experience:
+    Based on FIG-MAC successful experience:
     1. CAMEL ChatHistoryMemory for complete conversation history
     2. extract_between_json_tags() for structured content extraction
     3. Multi-layer storage: memory + file + checkpoint
@@ -103,7 +103,7 @@ class CAMELMemoryOutputManager:
             "synthesis", "review", "polish"
         ]
         
-        # VriSci-v2 inspired extraction patterns
+        # FIG-MAC inspired extraction patterns
         self.json_extraction_patterns = {
             "analysis": ["technical_analysis", "practical_analysis", "significance_analysis"],
             "structured_output": ["hypothesis", "methodology", "evaluation"]
@@ -138,7 +138,7 @@ class CAMELMemoryOutputManager:
         """
         Record agent conversation using CAMEL memory system
         
-        Based on VriSci-v2 experience:
+        Based on FIG-MAC experience:
         1. Store complete conversation in ChatHistoryMemory
         2. Extract structured content using extract_between_json_tags
         3. Create hypothesis-specific memory record
@@ -158,7 +158,7 @@ class CAMELMemoryOutputManager:
             
             self.chat_memory.write_records([message_record, response_record])
             
-            # Extract structured content (VriSci-v2 approach)
+            # Extract structured content (FIG-MAC approach)
             structured_data = self._extract_structured_content(response.msg.content, phase)
             
             # Create hypothesis memory record
@@ -203,15 +203,20 @@ class CAMELMemoryOutputManager:
     
     def _extract_structured_content(self, content: str, phase: str) -> Optional[Dict[str, Any]]:
         """
-        Extract structured content using VriSci-v2 approach
+        Extract structured content using FIG-MAC approach
         
         Uses CAMEL's extract_between_json_tags for robust JSON extraction
         """
         try:
-            # Try to extract JSON content (VriSci-v2 inspired method)
+            # Try to extract JSON content (FIG-MAC inspired method)
             json_content = extract_json_from_text(content)
             if json_content:
-                return json.loads(json_content)
+                try:
+                    return json.loads(json_content)
+                except json.JSONDecodeError:
+                    # JSON extraction found but parsing failed - this is expected
+                    # when agents output non-JSON content (most phases use markdown)
+                    pass
             
             # Fallback: look for specific patterns based on phase
             if phase == "analysis":
@@ -222,7 +227,8 @@ class CAMELMemoryOutputManager:
             return None
             
         except Exception as e:
-            self.logger.warning(f"Structured content extraction failed: {e}")
+            # Log as debug since this is expected behavior for non-structured content
+            self.logger.debug(f"Structured content extraction skipped for phase '{phase}': {e}")
             return None
     
     def _extract_analysis_patterns(self, content: str) -> Optional[Dict[str, Any]]:
@@ -278,7 +284,7 @@ class CAMELMemoryOutputManager:
         """
         Generate comprehensive report based on memory records
         
-        VriSci-v2 inspired approach:
+        FIG-MAC inspired approach:
         1. Retrieve complete conversation history
         2. Organize by phases and agents
         3. Include both raw content and structured extractions

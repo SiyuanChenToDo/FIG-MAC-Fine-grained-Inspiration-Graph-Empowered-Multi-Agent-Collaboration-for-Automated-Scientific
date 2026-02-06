@@ -7,7 +7,7 @@ print(f"Sys Path: {sys.path}")
 
 from camel.models import ModelFactory
 from camel.types import ModelPlatformType, ModelType
-from camel.configs import MistralConfig, OllamaConfig, QwenConfig
+from camel.configs import QwenConfig
 from camel.loaders import UnstructuredIO
 from camel.storages import Neo4jGraph
 from camel.retrievers import AutoRetriever
@@ -17,10 +17,13 @@ from camel.agents import ChatAgent, KnowledgeGraphAgent
 from camel.messages import BaseMessage
 from camel.storages import FaissStorage, VectorRecord, VectorDBQuery
 
+# 导入优化版检索模块
+sys.path.insert(0, '/root/autodl-tmp/Myexamples/ablation_study_test')
+from kg_retrieval_optimized_v2 import OptimizedKGRetriever, KGRetrievalResult
 
 import json
 import os
-from getpass import getpass
+
 import logging
 
 # Suppress verbose Neo4j warnings
@@ -41,9 +44,9 @@ os.environ["QWEN_API_BASE_URL"] = os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"
 
 # Set Neo4j instance
 n4j = Neo4jGraph(
-    url="bolt://localhost:17687",
+    url="bolt://localhost:7687",
     username="neo4j",
-    password="ai4sci123456",
+    password="neo4j123",
 )
 
 
@@ -60,6 +63,11 @@ qwen_model = ModelFactory.create(
 # Set instance
 uio = UnstructuredIO()
 kg_agent = KnowledgeGraphAgent(model=qwen_model)
+
+# 初始化知识图谱检索器
+print("--- Initializing KG Retriever ---")
+optimized_kg_retriever = OptimizedKGRetriever()
+print("✅ KG Retriever initialized\n")
 
 # Set retriever
 camel_retriever = AutoRetriever(
@@ -215,59 +223,86 @@ print("====================================================")
 
 
 # Match the entity got from query in the knowledge graph storage content
+# 使用层级检索：先找Paper，再获取关联的RQ和Solution
 kg_result = []
-for node in ans_element.nodes:
-    # 这里的 `node.id` 应该对应你的知识图谱中的某个节点主键，例如 `file_id`
-    # Cypher 查询需要根据你的实际数据模型进行修改
+
+# 从KG Agent提取的节点构建关键词列表
+extracted_keywords = [node.id for node in ans_element.nodes if node.id]
+print(f"\n🔍 从查询中提取的关键词: {extracted_keywords}")
+
+if extracted_keywords:
+    # 构建关键词匹配条件（针对Paper的多个属性）
+    paper_match_conditions = []
+    rq_match_conditions = []
     
-    # Cypher 查询匹配实际的图谱结构
-    n4j_query = f"""
-    // 搜索包含关键词的节点
-    MATCH (n)
-    WHERE any(key IN keys(n) WHERE toLower(toString(n[key])) CONTAINS toLower('{node.id}'))
-
-    // 查找其相关节点
-    OPTIONAL MATCH (n)-[r]-(m)
-
-    WITH n, r, m
-    LIMIT 5
-
-    RETURN
-        'Found a ' + labels(n)[0] + ' node. ' +
-        CASE
-            WHEN 'Paper' IN labels(n) THEN 
-                'Title: ' + coalesce(n.title, 'N/A') + '. ' +
-                'Core Problem: ' + coalesce(n.core_problem, 'N/A') + '. ' +
-                'Abstract: ' + coalesce(n.abstract, 'N/A') + '. ' +
-                'Related Work: ' + coalesce(n.related_work, 'N/A') + '. ' +
-                'Framework Summary: ' + coalesce(n.framework_summary, 'N/A')
-            WHEN 'ResearchQuestion' IN labels(n) THEN 
-                'Research Question: ' + coalesce(n.text, 'N/A')
-            WHEN 'Solution' IN labels(n) THEN 
-                'Solution: ' + coalesce(n.text, 'N/A')
-            ELSE 'Unknown node type'
-        END +
-        CASE
-            WHEN m IS NOT NULL THEN
-                ' This node has a ' + type(r) + ' relationship with a ' + labels(m)[0] + ' node. ' +
-                CASE
-                    WHEN 'Paper' IN labels(m) THEN 'The related paper title is: ' + coalesce(m.title, 'N/A') + '.'
-                    WHEN 'ResearchQuestion' IN labels(m) THEN 'The related research question is: ' + coalesce(m.text, 'N/A') + '.'
-                    WHEN 'Solution' IN labels(m) THEN 'The related solution is: ' + coalesce(m.text, 'N/A') + '.'
-                    ELSE ''
-                END
+    for keyword in extracted_keywords:
+        # Paper属性匹配
+        paper_match_conditions.append(f"toLower(p.title) CONTAINS toLower('{keyword}')")
+        paper_match_conditions.append(f"toLower(p.abstract) CONTAINS toLower('{keyword}')")
+        paper_match_conditions.append(f"toLower(p.core_problem) CONTAINS toLower('{keyword}')")
+        # RQ内容匹配
+        rq_match_conditions.append(f"toLower(rq.research_question) CONTAINS toLower('{keyword}')")
+    
+    paper_where = " OR ".join(paper_match_conditions)
+    rq_where = " OR ".join(rq_match_conditions)
+    
+    # 策略1：通过Paper属性检索完整层级
+    n4j_query_paper = f"""
+    // 找到匹配的Paper及其完整层级
+    MATCH (p:Paper)
+    WHERE {paper_where}
+    
+    // 获取关联的RQ和Solution
+    OPTIONAL MATCH (p)-[:raise]->(rq:ResearchQuestion)-[:solved_by]->(sol:Solution)
+    
+    WITH p, rq, sol
+    LIMIT 10
+    
+    RETURN 
+        '=== Paper: ' + coalesce(p.title, 'N/A') + ' ===' + '\n' +
+        'DOI: ' + coalesce(p.doi, 'N/A') + '\n' +
+        'Year: ' + coalesce(p.year, 'N/A') + ', Conference: ' + coalesce(p.conference, 'N/A') + '\n' +
+        'Core Problem: ' + coalesce(p.core_problem, 'N/A') + '\n' +
+        'Abstract: ' + substring(coalesce(p.abstract, 'N/A'), 0, 300) + '...' + '\n' +
+        CASE 
+            WHEN rq IS NOT NULL THEN
+                '\n[' + coalesce(rq.name, 'N/A') + '] ' + coalesce(rq.research_question, 'N/A') + '\n' +
+                '  → Solution: ' + substring(coalesce(sol.solution, 'N/A'), 0, 200) + '...'
             ELSE ''
         END
     AS Description
     """
     
-    result = n4j.query(query=n4j_query)
-    # The result is a list of dicts, e.g., [{'Description': '...'}].
-    # We extract the string values before extending the list.
-    kg_result.extend([item['Description'] for item in result])
+    result_paper = n4j.query(query=n4j_query_paper)
+    kg_result.extend([item['Description'] for item in result_paper])
+    
+    # 策略2：通过RQ内容检索（如果Paper策略结果不足）
+    if len(kg_result) < 3:
+        n4j_query_rq = f"""
+        // 找到匹配RQ的Paper层级
+        MATCH (rq:ResearchQuestion)
+        WHERE {rq_where}
+        
+        MATCH (p:Paper)-[:raise]->(rq)-[:solved_by]->(sol:Solution)
+        
+        WITH p, rq, sol
+        LIMIT 10
+        
+        RETURN 
+            '=== Paper: ' + coalesce(p.title, 'N/A') + ' ===' + '\n' +
+            'DOI: ' + coalesce(p.doi, 'N/A') + '\n' +
+            'Year: ' + coalesce(p.year, 'N/A') + ', Conference: ' + coalesce(p.conference, 'N/A') + '\n' +
+            'Core Problem: ' + coalesce(p.core_problem, 'N/A') + '\n' +
+            '\n[' + coalesce(rq.name, 'N/A') + '] ' + coalesce(rq.research_question, 'N/A') + '\n' +
+            '  → Solution: ' + substring(coalesce(sol.solution, 'N/A'), 0, 200) + '...'
+        AS Description
+        """
+        
+        result_rq = n4j.query(query=n4j_query_rq)
+        kg_result.extend([item['Description'] for item in result_rq])
 
-# Remove duplicates from the knowledge graph results list of strings
-kg_result = list(dict.fromkeys(kg_result))
+# Remove duplicates and limit results
+kg_result = list(dict.fromkeys(kg_result))[:5]  # 限制返回5个最相关结果
 
 # Show the result from knowledge graph database
 print(kg_result)
@@ -283,7 +318,8 @@ def run_rag_pipeline(
     kg_agent,
     uio,
     attribute_storages,
-    embedding_model
+    embedding_model,
+    optimized_kg_retriever=None
 ) -> str:
     """
     运行可配置的 RAG 流水线，用于消融研究。
@@ -307,76 +343,94 @@ def run_rag_pipeline(
     # 1. Vector Search (if applicable)
     vector_result = "Vector search was not performed in this mode."
     if mode in ["vector_only", "hybrid"]:
-        print("--- Performing Vector Search ---")
+        print("--- Performing Vector Search (Enriched) ---")
         query_embedding = embedding_model.embed(obj=query)
         all_results = []
-        for (entity_type, attr), storage in attribute_storages.items():
-            if storage.status().vector_count > 0:
-                db_query = VectorDBQuery(query_vector=query_embedding, top_k=1)
-                results = storage.query(query=db_query)
-                if results:
-                    for res in results:
-                        payload = res.record.payload
-                        res_text = (
-                            f"Found in {payload.get('entity_type', 'N/A')} attribute '{payload.get('attribute_name', 'N/A')}':\n"
-                            f"  - Similarity Score: {res.similarity:.4f}\n"
-                            f"  - Paper ID: {payload.get('paper_id', 'N/A')}\n"
-                            f"  - Content Snippet: {payload.get('text', '')}"
-                        )
-                        all_results.append(res_text)
-        vector_result = "\n\n".join(all_results)
+        seen_papers = set()
+        
+        # 优先检索关键属性，增加top_k
+        priority_attrs = [
+            ('paper', 'abstract'),
+            ('paper', 'core_problem'),
+            ('research_question', 'research_question'),
+            ('solution', 'solution'),
+        ]
+        
+        for entity_type, attr in priority_attrs:
+            storage_key = (entity_type, attr)
+            if storage_key not in attribute_storages:
+                continue
+                
+            storage = attribute_storages[storage_key]
+            if storage.status().vector_count == 0:
+                continue
+            
+            # 增加top_k到3，获取更多结果
+            db_query = VectorDBQuery(query_vector=query_embedding, top_k=3)
+            results = storage.query(query=db_query)
+            
+            for res in results:
+                payload = res.record.payload
+                paper_id = payload.get('paper_id', 'N/A')
+                
+                # 去重：每个paper只保留一次
+                if paper_id in seen_papers:
+                    continue
+                seen_papers.add(paper_id)
+                
+                # 构建更丰富的结果
+                res_text = (
+                    f"=== Vector Search Result (from {entity_type}.{attr}) ===\n"
+                    f"Paper ID: {paper_id}\n"
+                    f"Similarity Score: {res.similarity:.4f}\n"
+                    f"Content:\n{payload.get('text', '')[:800]}..."
+                )
+                all_results.append(res_text)
+        
+        vector_result = "\n\n".join(all_results[:5])  # 保留top 5
         if not vector_result:
             vector_result = "No relevant documents found in the local vector database."
 
     # 2. Knowledge Graph Search (if applicable)
     kg_result_list = []
     if mode in ["kg_only", "hybrid"]:
-        print("--- Performing Knowledge Graph Search ---")
-        query_element = uio.create_element_from_text(text=query, element_id="1")
-        ans_element = kg_agent.run(query_element, parse_graph_elements=True)
-        for node in ans_element.nodes:
-            n4j_query = f"""
-            // 搜索包含关键词的节点
-            MATCH (n)
-            WHERE any(key IN keys(n) WHERE toLower(toString(n[key])) CONTAINS toLower('{node.id}'))
+        print("--- Performing Knowledge Graph Search (Optimized V2+) ---")
+        
+        # 使用优化版检索器 V2（语义检索 + 精确重排）
+        if optimized_kg_retriever:
+            print("  -> Using optimized semantic search (RQ-focused, enriched)")
             
-            // 查找其相关节点
-            OPTIONAL MATCH (n)-[r]-(m)
+            # 增加检索数量到10，获取更多上下文
+            retrieved_items = optimized_kg_retriever.retrieve_with_diversity(
+                query=query,
+                top_k=10,  # 增加到10个
+                diversity_weight=0.2  # 降低多样性权重，优先相关性
+            )
             
-            WITH n, r, m
-            LIMIT 5
+            print(f"  -> Retrieved {len(retrieved_items)} items")
             
-            RETURN
-                'Found a ' + labels(n)[0] + ' node. ' +
-                CASE
-                    WHEN 'Paper' IN labels(n) THEN 
-                        'Title: ' + coalesce(n.title, 'N/A') + '. ' +
-                        'Core Problem: ' + coalesce(n.core_problem, 'N/A') + '. ' +
-                        'Abstract: ' + coalesce(n.abstract, 'N/A') + '. ' +
-                        'Related Work: ' + coalesce(n.related_work, 'N/A') + '. ' +
-                        'Framework Summary: ' + coalesce(n.framework_summary, 'N/A')
-                    WHEN 'ResearchQuestion' IN labels(n) THEN 
-                        'Research Question: ' + coalesce(n.text, 'N/A')
-                    WHEN 'Solution' IN labels(n) THEN 
-                        'Solution: ' + coalesce(n.text, 'N/A')
-                    ELSE 'Unknown node type'
-                END +
-                CASE
-                    WHEN m IS NOT NULL THEN
-                        ' This node has a ' + type(r) + ' relationship with a ' + labels(m)[0] + ' node. ' +
-                        CASE
-                            WHEN 'Paper' IN labels(m) THEN 'The related paper title is: ' + coalesce(m.title, 'N/A') + '.'
-                            WHEN 'ResearchQuestion' IN labels(m) THEN 'The related research question is: ' + coalesce(m.text, 'N/A') + '.'
-                            WHEN 'Solution' IN labels(m) THEN 'The related solution is: ' + coalesce(m.text, 'N/A') + '.'
-                            ELSE ''
-                        END
-                    ELSE ''
-                END
-            AS Description
-            """
-            result = n4j.query(query=n4j_query)
-            kg_result_list.extend([item['Description'] for item in result])
-        kg_result_list = list(dict.fromkeys(kg_result_list))
+            # 获取完整Paper信息（包含更多字段）
+            for item in retrieved_items:
+                # 获取更完整的Paper信息
+                full_paper = optimized_kg_retriever.get_paper_hierarchy_by_doi(item.paper_doi)
+                
+                # 构建更丰富的上下文
+                desc_parts = [f"=== Paper: {item.paper_title} ==="]
+                desc_parts.append(f"DOI: {item.paper_doi}")
+                desc_parts.append(f"Year: {item.paper_year} | Conference: {item.paper_conference} | Relevance: {item.relevance_score:.3f}")
+                desc_parts.append("")
+                desc_parts.append(f"🔍 CORE PROBLEM:\n{item.core_problem[:400]}")
+                desc_parts.append("")
+                desc_parts.append(f"📝 ABSTRACT:\n{item.abstract[:500]}...")
+                desc_parts.append("")
+                desc_parts.append(f"❓ RESEARCH QUESTION [{item.rq_name}]:\n{item.research_question[:400]}")
+                desc_parts.append("")
+                desc_parts.append(f"💡 SOLUTION:\n{item.solution[:500]}...")
+                
+                kg_result_list.append("\n".join(desc_parts))
+        
+        if not kg_result_list:
+            kg_result_list = ["No relevant papers found in knowledge graph."]
 
     # 3. Build Context based on mode
     kg_result_str = chr(10).join(kg_result_list) if kg_result_list else "No relevant graph relations found."
@@ -395,42 +449,45 @@ def run_rag_pipeline(
 {kg_result_str}"""
 
     # 4. Generate Answer
-    advanced_system_prompt = """You are an expert AI research assistant specialized in computer vision, machine learning, and related technical domains. Your mission is to provide comprehensive, accurate, and well-structured answers to technical research questions.
+    advanced_system_prompt = """You are an expert AI research assistant specialized in computer vision, machine learning, and NLP research. Your task is to provide comprehensive, well-supported answers based on the retrieved research papers.
 
-## Core Capabilities:
-- Deep understanding of computer vision, machine learning, and AI research methodologies
-- Ability to synthesize information from multiple sources with different reliability levels
-- Expert knowledge in technical concepts, algorithms, frameworks, and experimental designs
-- Skilled in identifying and prioritizing the most relevant information for answering complex queries
+## Source Material Analysis:
+You have been provided with:
+- **Vector Search Results**: Semantic matches from paper abstracts and core problems
+- **Knowledge Graph Results**: Structured paper information including Core Problem → Research Question → Solution hierarchies
 
-## Response Strategy:
-1. **Information Prioritization**: 
-   - PRIMARY: Focus primarily on "Primary Evidence" which contains highly relevant, semantically matched content
-   - SUPPLEMENTARY: Use "Supplementary Context" only if it adds valuable insights not covered in primary evidence
-   - FILTERING: Ignore any information that is clearly irrelevant to the query domain or topic
+## Answer Requirements:
 
-2. **Answer Structure**:
-   - Begin with a direct, concise answer based *strictly* on the provided evidence.
-   - Then, create a clearly marked "### Expert Elaboration" section. In this section, if the evidence mentions a technical concept (e.g., 'channel attention') but lacks implementation details, elaborate on its typical mechanism and how it plausibly works in this specific context.
-   - Use formatting (bullet points, emphasis) to structure technical details for clarity.
-   - Conclude with a summary of key insights.
+### 1. Direct Answer (First 2-3 sentences)
+Provide a concise, direct answer to the query based **exclusively** on the evidence provided. State the key approach/method clearly.
 
-3. **Quality Assurance**:
-   - In the main answer, ensure technical accuracy based *only* on the evidence.
-   - In the "Expert Elaboration" section, clearly state that this is a reasoned inference based on established principles, as the source text lacks full detail.
-   - Avoid speculation beyond what is plausible for an expert in the field.
+### 2. Detailed Technical Explanation
+Expand on the answer with specific details from the papers:
+- **Problem Definition**: What challenge does the paper address? (cite Core Problem)
+- **Proposed Solution**: What is the main technical contribution? (cite Research Question and Solution)
+- **Implementation Details**: How does the method work in practice?
+- **Key Insights**: What are the main findings or innovations?
 
-4. **Communication Style**:
-   - Use clear, professional academic language
-   - Structure information logically with proper technical terminology
-   - Provide sufficient detail for technical understanding while remaining accessible
-   - Use formatting (bullet points, emphasis) to enhance clarity when helpful
+### 3. Evidence Citations
+- Reference specific papers by title and year
+- Quote key technical details when relevant
+- Distinguish between different approaches if multiple papers are relevant
 
-## Critical Guidelines:
-- Never fabricate technical details not present in the provided evidence
-- Prioritize evidence quality over quantity
-- Focus on answering the specific question asked rather than providing general background
-- If multiple approaches are mentioned in evidence, compare and contrast them appropriately"""
+### 4. Critical Assessment
+Briefly discuss:
+- Strengths of the proposed approach
+- Limitations or assumptions
+- Applicability to the query context
+
+## Critical Rules:
+- ✅ Base your answer **only** on the provided evidence
+- ✅ Include specific technical details (algorithms, architectures, metrics)
+- ✅ Cite paper titles when referencing specific work
+- ✅ If evidence is insufficient, clearly state what information is missing
+- ❌ Do not introduce external knowledge not present in the evidence
+- ❌ Do not speculate beyond what the papers support
+
+Use clear academic language and structured formatting (sections, bullet points) for readability."""
     
     sys_msg = BaseMessage.make_assistant_message(
         role_name="Expert Research Assistant",
@@ -441,11 +498,18 @@ def run_rag_pipeline(
     user_prompt = f"""## Research Query:
 {query}
 
-## Available Evidence:
+## Retrieved Research Papers:
 {structured_context}
 
-## Task:
-Please provide a comprehensive answer to the research query using the evidence above. Follow your response strategy to prioritize the most relevant information and provide a well-structured, technically accurate answer."""
+## Instructions:
+Based on the research papers provided above, answer the query following these steps:
+
+1. **Direct Answer**: State the main approach/conclusion in 2-3 sentences
+2. **Technical Details**: Explain the methodology with specific details from the papers
+3. **Evidence**: Cite specific paper titles and key findings
+4. **Critical Notes**: Mention any limitations or important caveats
+
+Focus on synthesizing information from ALL relevant papers provided, not just the first one. If multiple papers address the query, compare their approaches."""
     
     user_msg = BaseMessage.make_user_message(role_name="CAMEL User", content=user_prompt)
     agent_response = camel_agent.step(user_msg)
@@ -530,7 +594,7 @@ Please provide a structured analysis comparing these four answers. Evaluate them
 
 
 def run_ablation_study(
-    query, qwen_model, n4j, kg_agent, uio, attribute_storages, embedding_model
+    query, qwen_model, n4j, kg_agent, uio, attribute_storages, embedding_model, optimized_kg_retriever
 ):
     """主函数，运行消融实验并输出评估结果。"""
     
@@ -547,6 +611,7 @@ def run_ablation_study(
             uio=uio,
             attribute_storages=attribute_storages,
             embedding_model=embedding_model,
+            optimized_kg_retriever=optimized_kg_retriever,
         )
         responses[mode] = response
         print(f"--- Response for '{mode}' ---")
@@ -572,6 +637,7 @@ run_ablation_study(
     uio=uio,
     attribute_storages=attribute_storages,
     embedding_model=camel_retriever.embedding_model,
+    optimized_kg_retriever=optimized_kg_retriever,
 )
 
 print("finished!")

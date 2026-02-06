@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CAMEL Native Agent Implementation
-Based on VriSci-v2 SciAgent_Async pattern, fully adopts CAMEL framework native mechanisms
+Based on FIG-MAC SciAgent_Async pattern, fully adopts CAMEL framework native mechanisms
 """
 
 from typing import Any, Dict, List, Optional, Union
@@ -27,7 +27,7 @@ class HypothesisTaskResult(BaseModel):
 class CamelNativeAgent(BaseAgent):
     """
     Agent based on CAMEL native mechanisms
-    References VriSci-v2 SciAgent_Async design pattern
+    References FIG-MAC SciAgent_Async design pattern
     """
     
     def __init__(
@@ -50,7 +50,7 @@ class CamelNativeAgent(BaseAgent):
             tools: Tool list
             memory_config: Memory configuration
         """
-        # Use CAMEL standard QwenConfig configuration (reference VriSci-v2 best practices)
+        # Use CAMEL standard QwenConfig configuration (reference FIG-MAC best practices)
         model_config = model_config or {}
         
         # Create CAMEL standard Qwen configuration
@@ -68,13 +68,17 @@ class CamelNativeAgent(BaseAgent):
         )
         
         try:
+            # Get timeout from environment variable or use default (1200s = 20min for complex tasks)
+            import os
+            default_timeout = float(os.environ.get("CAMEL_MODEL_TIMEOUT", 1200.0))
+            
             self.model_backend: BaseModelBackend = ModelFactory.create(
                 model_platform=ModelPlatformType.QWEN,
                 model_type=model_type,
                 model_config_dict=qwen_config.as_dict(),
                 # Pass retry and timeout parameters to constructor rather than model_config_dict
                 max_retries=model_config.get("max_retries", 3),
-                timeout=model_config.get("timeout", 180.0)
+                timeout=model_config.get("timeout", default_timeout)
             )
             print(f"✅ Model backend created successfully: {model_type}")
         except Exception as e:
@@ -82,7 +86,7 @@ class CamelNativeAgent(BaseAgent):
             print(f"❌ Model creation failed: {e}")
             raise RuntimeError(f"Failed to create model backend: {e}. Please check your API keys and model configuration.")
         
-        # Set role management (VriSci-v2 mode)
+        # Set role management (FIG-MAC mode)
         self.role_type = OpenAIBackendRole.ASSISTANT
         
         # Store configuration information (BaseAgent is abstract class, no need to call super().__init__)
@@ -100,20 +104,20 @@ class CamelNativeAgent(BaseAgent):
         self.model = self.model_backend  # model attribute expected by Workforce
         self.memory = None  # memory attribute expected by Workforce, temporarily set to None
         
-        # Initialize CAMEL native memory system (based on VriSci-v2 mode)
+        # Initialize CAMEL native memory system (based on FIG-MAC mode)
         memory_config = memory_config or {}
         if self.model_backend:
-            # Create token counter (VriSci-v2 reference)
+            # Create token counter (FIG-MAC reference)
             from camel.utils import OpenAITokenCounter
             token_counter = OpenAITokenCounter(model_type)
             
-            # Create context creator (VriSci-v2 reference)
+            # Create context creator (FIG-MAC reference)
             self.context_creator: ScoreBasedContextCreator = ScoreBasedContextCreator(
                 token_counter=token_counter,
                 token_limit=memory_config.get('token_limit', 8192)
             )
             
-            # Dual memory architecture (VriSci-v2 mode) - use correct CAMEL API parameters
+            # Dual memory architecture (FIG-MAC mode) - use correct CAMEL API parameters
             self.personality_memory: ChatHistoryMemory = ChatHistoryMemory(
                 context_creator=self.context_creator
             )
@@ -206,7 +210,7 @@ class CamelNativeAgent(BaseAgent):
         **kwargs
     ) -> ChatAgentResponse:
         """
-        Asynchronous execution step (VriSci-v2 mode)
+        Asynchronous execution step (FIG-MAC mode)
         
         Args:
             input_message: Input message
@@ -376,14 +380,14 @@ class CamelNativeAgent(BaseAgent):
     
     def update_memory(self, message: BaseMessage, role: OpenAIBackendRole) -> None:
         """
-        VriSci-v2 mode memory update (synchronous method)
+        FIG-MAC mode memory update (synchronous method)
         Based on investigation report's correct API usage
         """
         if not self.memory or not self.personality_memory:
             return
         
         try:
-            # Import MemoryRecord (VriSci-v2 reference)
+            # Import MemoryRecord (FIG-MAC reference)
             from camel.memories import MemoryRecord
             
             # Create memory record
@@ -392,7 +396,7 @@ class CamelNativeAgent(BaseAgent):
                 role_at_backend=role
             )
             
-            # Dual memory architecture separate management (VriSci-v2 mode)
+            # Dual memory architecture separate management (FIG-MAC mode)
             if role == OpenAIBackendRole.SYSTEM:
                 self.personality_memory.write_record(record)
             else:
@@ -403,7 +407,7 @@ class CamelNativeAgent(BaseAgent):
     
     def get_context_with_tokens(self) -> tuple:
         """
-        Get CAMEL native intelligent context (VriSci-v2 mode)
+        Get CAMEL native intelligent context (FIG-MAC mode)
         Returns: (complete context message list, total token count)
         """
         if not self.memory or not self.personality_memory:
@@ -419,7 +423,7 @@ class CamelNativeAgent(BaseAgent):
                 openai_messages, token_count = self.memory.get_context()
                 personality_info, info_tokens = self.personality_memory.get_context()
             
-            # VriSci-v2 mode dynamic context combination
+            # FIG-MAC mode dynamic context combination
             full_context = personality_info + openai_messages
             total_tokens = token_count + info_tokens
             
@@ -430,7 +434,7 @@ class CamelNativeAgent(BaseAgent):
             return [], 0
 
     def clear_memory(self) -> None:
-        """Clear memory (VriSci-v2 mode)"""
+        """Clear memory (FIG-MAC mode)"""
         if self.memory:
             self.memory.clear()
         if self.personality_memory:

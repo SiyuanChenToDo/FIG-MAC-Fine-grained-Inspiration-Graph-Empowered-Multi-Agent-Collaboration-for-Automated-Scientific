@@ -1,0 +1,39 @@
+# Core Framework
+camel-ai>=0.2.0
+
+# LLM and AI
+openai>=1.0.0
+qwen-agent>=0.1.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Vector Database
+faiss-cpu>=1.7.4
+
+# Knowledge Graph
+neo4j>=5.0.0
+networkx>=3.0
+
+# Text Processing
+markdown>=3.4.0
+python-markdown-math>=0.8
+
+# Async Support
+aiohttp>=3.8.0
+asyncio>=3.4.3
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Logging and Monitoring
+loguru>=0.7.0
+
+# Development (optional)
+pytest>=7.0.0
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0

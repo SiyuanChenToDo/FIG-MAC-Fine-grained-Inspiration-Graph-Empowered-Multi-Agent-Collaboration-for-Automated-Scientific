@@ -21,7 +21,7 @@ class TeamState(Enum):
     REVIEW = "review"
     REVISION = "revision"  # Revision phase (iterative improvement)
     POLISH = "polish"
-    EVALUATION = "evaluation"  # Final evaluation phase (VriSci-v2 standards)
+    EVALUATION = "evaluation"  # Final evaluation phase (FIG-MAC standards)
     FINISH = "finish"
 
 
@@ -87,11 +87,10 @@ class WorkflowHelper:
     
     def get_state_sequence(self) -> List[TeamState]:
         """
-        
         Returns:
-            List[TeamState]: State sequence
+            List[TeamState]: Complete state sequence including iterative revision
         """
-        # Return all states in correct order
+        # Return all states in correct order, including REVISION for completeness
         return [
             TeamState.INIT,
             TeamState.LITERATURE,
@@ -99,6 +98,7 @@ class WorkflowHelper:
             TeamState.ANALYSIS,
             TeamState.SYNTHESIS,
             TeamState.REVIEW,
+            TeamState.REVISION,  # Iterative improvement phase
             TeamState.POLISH,
             TeamState.EVALUATION,
             TeamState.FINISH

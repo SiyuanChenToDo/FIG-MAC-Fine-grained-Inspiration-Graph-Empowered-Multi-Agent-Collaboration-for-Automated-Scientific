@@ -149,10 +149,10 @@ global_config:
   enable_state_history: true
   enable_performance_tracking: true
   
-  # Iteration configuration (VriSci-v2 style)
+  # Iteration configuration (FIG-MAC style)
   iteration:
     max_iterations: 3  # Maximum number of revision iterations
-    quality_threshold: 9.0  # Quality score threshold (1-10 scale)
+    quality_threshold: 8.0  # Quality score threshold (1-10 scale) - Strong Accept level
     enable_iteration: true  # Enable iterative improvement
     track_iteration_progress: true  # Track quality scores across iterations
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Final Evaluation Agent for Scientific Hypothesis Assessment
-Based on CAMEL BaseAgent architecture with VriSci-v2 evaluation standards
+Based on CAMEL BaseAgent architecture with FIG-MAC evaluation standards
 """
 
 import json
@@ -17,7 +17,7 @@ from camel.responses import ChatAgentResponse
 class FinalEvaluationAgent(ChatAgent):
     """
     Final evaluation agent based on CAMEL BaseAgent architecture
-    Implements VriSci-v2 evaluation standards with 8-dimensional scoring
+    Implements FIG-MAC evaluation standards with 8-dimensional scoring
     """
 
     # 权重设置：如需调整，可修改该字典
@@ -55,7 +55,7 @@ class FinalEvaluationAgent(ChatAgent):
         self.role_name = "Scientific Hypothesis Evaluator"
     
     def _create_evaluation_prompt(self) -> BaseMessage:
-        """Create evaluation prompt based on VriSci-v2 standards"""
+        """Create evaluation prompt based on FIG-MAC standards"""
         
         # Carefully designed prompt to avoid f-string and escape character issues
         prompt_content = """You are a Final Evaluation Agent for scientific hypothesis assessment.
@@ -108,7 +108,7 @@ Be critical and cautious in your decision."""
     
     def evaluate_hypothesis(self, hypothesis_content: str) -> Dict[str, Any]:
         """
-        Evaluate scientific hypothesis using VriSci-v2 standards
+        Evaluate scientific hypothesis using FIG-MAC standards
         
         Args:
             hypothesis_content: The scientific hypothesis content to evaluate

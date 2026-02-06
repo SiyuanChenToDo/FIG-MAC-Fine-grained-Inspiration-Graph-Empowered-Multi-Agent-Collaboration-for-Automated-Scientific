@@ -38,13 +38,13 @@ class WorkflowContextManager:
     Unlike agent's internal memory, this is shared across the entire workflow.
     """
     
-    def __init__(self, token_limit: int = 32768, model_type: ModelType = ModelType.QWEN3_MAX):
+    def __init__(self, token_limit: int = 32768, model_type: ModelType = ModelType.QWEN_MAX):
         """
         Initialize workflow context manager
         
         Args:
             token_limit: Maximum token limit for context (default: 32768)
-            model_type: Model type for token counting (default: QWEN3_MAX)
+            model_type: Model type for token counting (default: QWEN_MAX)
         """
         self.logger = logging.getLogger(f"{__name__}.WorkflowContextManager")
         
@@ -72,6 +72,17 @@ class WorkflowContextManager:
         self._phase_history: List[Dict[str, Any]] = []
         
         self.logger.info(f"WorkflowContextManager initialized (token_limit={token_limit})")
+        
+        # CRITICAL: Force update ScoreBasedContextCreator's token limit
+        # Direct assignment to ensure it takes effect
+        self._context_creator._token_limit = token_limit
+        
+        # DEBUG: Verify ScoreBasedContextCreator's token limit
+        actual_limit = self._context_creator.token_limit
+        if actual_limit != token_limit:
+            self.logger.error(f"CRITICAL: Token limit mismatch! Expected {token_limit}, got {actual_limit}")
+        else:
+            self.logger.info(f"✅ Verified: ScoreBasedContextCreator token_limit = {actual_limit}")
     
     def add_phase_result(
         self, 
@@ -252,6 +263,19 @@ class WorkflowContextManager:
         """
         return self._current_token_limit
     
+    @property
+    def effective_token_limit(self) -> int:
+        """
+        Get the effective token limit from ScoreBasedContextCreator.
+        
+        This is the actual limit used for truncation, which should match
+        the configured token_limit.
+        
+        Returns:
+            int: Effective token limit from context creator
+        """
+        return self._context_creator.token_limit
+    
     @token_limit.setter
     def token_limit(self, value: int) -> None:
         """
@@ -277,7 +301,12 @@ class WorkflowContextManager:
         
         old_limit = self._current_token_limit
         self._current_token_limit = value
-        self.logger.info(f"Token limit updated: {old_limit} -> {value}")
+        
+        # CRITICAL: Also update the ScoreBasedContextCreator's token limit
+        # This is necessary because the context creator is what actually performs truncation
+        self._context_creator._token_limit = value
+        
+        self.logger.info(f"Token limit updated: {old_limit} -> {value} (including ScoreBasedContextCreator)")
     
     def get_phase_history(self) -> List[Dict[str, Any]]:
         """
