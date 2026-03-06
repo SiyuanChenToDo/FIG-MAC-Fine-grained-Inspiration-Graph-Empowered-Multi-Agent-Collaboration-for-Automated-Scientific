@@ -1,0 +1,500 @@
+% This must be in the first 5 lines to tell arXiv to use pdfLaTeX, which is strongly recommended.
+\pdfoutput=1
+% In particular, the hyperref package requires pdfLaTeX in order to break URLs across lines.
+
+\documentclass[11pt]{article}
+
+% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
+% Change to "preprint" to generate a non-anonymous version with page numbers.
+\usepackage[review]{acl}
+
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{booktabs}
+\usepackage{adjustbox}
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+\usepackage{amsmath}
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{multirow}
+\usepackage{inconsolata}
+\usepackage{enumitem}
+\usepackage{float}
+%Including images in your LaTeX document requires adding
+%additional package(s)
+\usepackage{graphicx}
+
+% Line spacing control
+\usepackage{setspace}
+\setstretch{1.05}  % Slightly increase line spacing for better readability
+
+% If the title and author information does not fit in the area allocated, uncomment the following
+%
+%\setlength\titlebox{<dim>}
+%
+% and set <dim> to something 5cm or larger.
+
+\title{FIG-MAC: A Fine-grained Inspiration Graph Empowered\\Multi-Agent Collaboration for Automated Scientific Discovery}
+
+% Author information can be set in various styles:
+% For several authors from the same institution:
+% \author{Author 1 \and ... \and Author n \\
+%         Address line \\ ... \\ Address line}
+% if the names do not fit well on one line use
+%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
+% For authors from different institutions:
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \And  ... \And
+%         Author n \\ Address line \\ ... \\ Address line}
+% To start a separate ``row'' of authors use \AND, as in
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \AND
+%         Author 2 \\ Address line \\ ... \\ Address line \And
+%         Author 3 \\ Address line \\ ... \\ Address line}
+
+\author{First Author \\
+  Affiliation / Address line 1 \\
+  Affiliation / Address line 2 \\
+  Affiliation / Address line 3 \\
+  \texttt{email@domain} \\\And
+  Second Author \\
+  Affiliation / Address line 1 \\
+  Affiliation / Address line 2 \\
+  Affiliation / Address line 3 \\
+  \texttt{email@domain} \\}
+
+\usepackage{CJKutf8}
+\begin{document}
+\begin{CJK}{UTF8}{gbsn}
+
+\maketitle
+\begin{abstract}
+Automated Scientific Hypothesis Generation (ASHG) leveraging large language models (LLMs) aims to harness their strengths in knowledge integration, logical reasoning, and text generation for efficiently producing innovative, verifiable scientific hypotheses. However, existing approaches face three critical limitations: (i)insufficient fine-grained knowledge construction, where noise in unstructured documents impairs LLM comprehension and reasoning; (ii)lack of knowledge evolution traceability, as current retrieval relies on superficial semantic or citation links without modeling knowledge origins and trajectories; (iii)absence of human-inspired and role-specialized multi-agent collaboration, to complete the full ASHG-evaluation loop. To address above limitations, we propose the Fine-grained Inspiration Graph-empowered Multi-Agent Collaboration framework (FIG-MAC) including: (i)Fine-grained Inspiration Graph module (FIG), to obtain fine-grained structured knowledge representations, where nodes represent academic semantic units and edges encode heuristic relationships among them; (ii)“Skeleton-Flesh” hybrid reasoning module , fusing FIG-based graph path reasoning as a structural backbone with vector search as semantic enrichment, enabling the discovery of traceable scientific conjecture paths; (iii)role-specialized multi-agent framework, inspired by real scientific teamwork, enabling a closed-loop process of scientific conjecture generation, screening, and validation. Experiments on 150 research questions demonstrate that FIG-MAC achieves state-of-the-art performance on both innovation and reliability metrics, outperforming single-LLM baselines by 66.9\% and multi-agent baselines by 2.4\%–43.5\%. Our code is open at  \href{https://github.com/SiyuanChenToDo/KG-LLM.git}{GitHub repository}.
+\end{abstract}
+
+\section{Introduction}
+
+Automated Scientific Hypothesis Generation (ASHG) based on large language models (LLMs) aims to leverage their robust capabilities in knowledge integration, logical reasoning, and text generation to efficiently produce innovative and verifiable scientific hypotheses\cite{DBLP:journals/tmlr/AgarwalSPLDSCP25,DBLP:journals/pr/LiuZWL26}. As illustrated in Figure \ref{fig1}, such methods have achieved initial success in multiple domains, including the prediction of chemical molecular properties\cite{yang2024moose,yang2025moose2}, the formulation of physical theoretical conjectures, the screening of novel semiconductor materials, and the mining of potential drug molecules.
+\begin{figure}[t]
+    \centering 
+    \includegraphics[width=1\linewidth]{img/fig1.pdf} 
+    \caption{The Wide-Ranging Applications of ASHG Across Diverse Domains.} % 图片标题
+    \label{fig1} % 图片标签,用于交叉引用
+\end{figure}
+
+In recent years, ASHG has focused on three domains: (1) to identify potential research gaps in academic literature, models such as AutoResearcher~\cite{DBLP:journals/corr/abs-2510-20844}, HypoGen~\cite{zhou2024hypothesis}, and MC-NEST~\cite{DBLP:journals/corr/abs-2411-15645} have detected research blind spots by integrating knowledge retrieval and logical reasoning; (2) to improve the empirical feasibility and verifiability of generated hypotheses, recent methods explicitly optimize hypotheses for testability and practical relevance, AI Scientist systems~\cite{DBLP:journals/corr/abs-2408-06292,aiscientist_v2}operationalize hypothesis generation as an iterative "proposing-evaluating-refining" loop, Causal Graph-guided approaches~\cite{tong2024automating}constrain hypothesis space using explicit causal structures, while LLM-based iterative optimization~\cite{rabby2025iterative}progressively refines hypotheses via feedback-driven reasoning and evaluation;(3) to improve the factual consistency and verifiability of hypotheses, techniques including Retrieval-Augmented Generation (RAG)~\cite{DBLP:conf/nips/LewisPPPKGKLYR020} and Graph Reasoning~\cite{liang2024survey} have been integrated to enhance the scientific rigor and reliability of hypotheses.
+
+
+However, the following limitations remain: (1) lack of fine-grained academic knowledge representation: Most existing external knowledge exists in the form of unstructured documents or abstracts, which contain substantial noise and thus affect the subsequent comprehension and reasoning accuracy of LLMs. (2) insufficient traceability of knowledge evolution: Current knowledge retrieval relies on surface-level semantic similarity or citation associations, lacking modeling of the origin and development path of knowledge. This makes it difficult for models to understand the dynamic process of ASHG and restricts their ability to break through the boundaries of existing problems. (3) absence of structured, role-aware multi-agent collaboration: Single agent can not independently complete the full-process closed loop from problem discovery and reasoning generation to hypothesis evaluation. Insufficient exploration of multi-agent collaboration mechanisms has hindered the large-scale practical deployment of ASHG methods.
+
+To address above challenges, we propose a Fine-grained Inspiration Graph-based Multi-Agent Collaboration Framework (FIG-MAC). First, the FIG module converts raw corpus into semantic units through knowledge parsing and constructs heuristic relationships of different levels between these units, providing structured knowledge for reasoning. Second, the "Skeleton-Flesh" reasoning module generates knowledge skeleton evolution paths via graph traversal, and supplements specific content (the "flesh") for each node by combining vector retrieval, forming a traceable dynamic knowledge context. Finally, the MAC module simulates the real scientific research process by setting intelligent roles such as knowledge exploration, idea generation, and parallel domain review. Through multiple rounds of evaluation and knowledge interpretability feedback, the framework generates rigorously verified scientific hypotheses. 
+
+Extensive experiments on the test set demonstrate that FIG-MAC achieves state-of-the-art performance in all metrics including innovation and reliability. Our contributions are summarized as follows:
+
+\begin{itemize}[leftmargin=*]
+\setlength{\itemsep}{-3pt}
+\item We construct a specialized multi-agent collaboration framework that achieves a full-process, interpretable closed loop for ASHG and verification.
+\item We propose a fine-grained inspiration graph module that enables structured denoising and semantic enhancement of knowledge with Inspired edges capturing cross-paper innovation mechanisms.
+\item We design a "skeleton-flesh" reasoning mechanism that enhances the dynamic traceability of ASHG.
+\end{itemize}
+
+
+\section{Related Work}
+
+The automated generation and validation of scientific hypotheses has witnessed rapid advancement in recent years, driven by the emergence of large language models and multi-agent systems. This section reviews the key technical approaches for hypothesis generation and validation, organized by their underlying methodologies, with a focus on recent developments since 2020.
+
+\subsection{Fine-Grained Knowledge Construction for Hypothesis Generation}
+
+The foundation of automated scientific hypothesis generation lies in the quality and granularity of knowledge representation. Early approaches relied on coarse-grained entity modeling, where papers, authors, and venues served as primary nodes in citation networks~\cite{wang2020microsoft}. However, such representations fail to capture the nuanced relationships among scientific concepts essential for generating meaningful hypotheses.
+
+Recent work has shifted toward fine-grained knowledge construction. Semantic Scholar's literature graph~\cite{ammar2018construction} and subsequent efforts have demonstrated the value of extracting fine-grained entities such as diseases, drugs, genes, and proteins from scientific literature. Multi-task learning frameworks for entity, relation, and coreference extraction have enabled more precise knowledge graph construction~\cite{luan2018multi}. In the biomedical domain, specialized knowledge graphs like BioMedGraphica provide comprehensive representations of biomedical entities and their relationships, facilitating hypothesis generation through structured reasoning~\cite{zhang2025biomedgraphica}.
+
+Fine-grained entity and relation extraction from scientific texts has become a critical research direction. SciNLP introduces domain-specific benchmarks for full-text scientific entity and relation extraction in NLP research, addressing the gap between abstract-level and full-text information extraction~\cite{duan2025scinlp}. GSAP-ERE advances fine-grained scholarly entity and relation extraction by manually annotating machine learning publications, enabling precise identification of research concepts and their interconnections~\cite{otto2025gsap}. InfraKG demonstrates the extraction and structuring of infrastructure-related entities from scientific articles, showcasing the applicability of fine-grained approaches across diverse scientific domains~\cite{anjum2025infrakg}.
+
+Despite these advances, existing methods often struggle with noise in unstructured documents, which impairs the comprehension and reasoning capabilities of downstream systems. The need for robust fine-grained knowledge construction that filters irrelevant information while preserving critical semantic relationships remains a significant challenge.
+
+\subsection{Knowledge Evolution and Traceability in Scientific Discovery}
+
+A critical limitation of current hypothesis generation systems is their reliance on superficial semantic similarity or static graph links without modeling dynamic knowledge evolution or providing traceable reasoning paths. Understanding how scientific knowledge evolves over time and tracing the origins of hypotheses are essential for ensuring the reliability and interpretability of generated conjectures.
+
+Recent research has explored various approaches to knowledge evolution modeling. Bibliometric-driven analyses reveal knowledge development trajectories and research hotspot evolution through co-citation analysis and keyword clustering~\cite{zhang2025bibliometric,hosseini2025topical}. Main path analysis (MPA) techniques simplify intricate citation networks into pivotal knowledge flows, enabling the identification of influential research pathways~\cite{rejeb2025knowledge}. These methods provide insights into how scientific fields evolve but are primarily retrospective rather than generative.
+
+Retrieval-augmented generation (RAG) has emerged as a promising paradigm for grounding hypothesis generation in verifiable sources. RAG systems combine parametric knowledge from language models with non-parametric knowledge from external corpora, enabling more factual and traceable outputs~\cite{amugongo2025retrieval,liu2025retrieval}. In scientific domains, RAG has been applied to accelerate crystalline material discovery by leveraging domain-specific knowledge bases~\cite{oche2025role}. However, current RAG approaches primarily focus on retrieving relevant documents rather than modeling the evolutionary relationships among scientific concepts.
+
+The traceability of hypothesis generation remains underexplored. Most existing systems generate hypotheses as black-box outputs without providing interpretable reasoning paths or evidence trails. The lack of transparent connections between generated hypotheses and their evidentiary foundations limits the trustworthiness and verifiability of automated hypothesis generation systems.
+
+\subsection{Multi-Agent Collaboration for Hypothesis Generation and Validation}
+
+Multi-agent systems have emerged as a powerful paradigm for collaborative scientific discovery, distributing specialized roles among autonomous agents to simulate real-world scientific teamwork. These frameworks address the complexity of hypothesis generation by decomposing the task into manageable subtasks assigned to agents with distinct expertise.
+
+SciAgents represents a state-of-the-art multi-agent framework that combines large-scale ontological knowledge graphs with language models for hypothesis generation~\cite{ghafarollahi2025sciagents}. The system employs specialized agents including an Ontologist (defining concepts and relationships), Scientists (crafting and refining research proposals), and a Critic (reviewing proposals and suggesting improvements). Through hierarchical expansion strategies and iterative refinement, the system generates novel research hypotheses with high feasibility scores.
+
+BioDisco introduces a modular multi-agent system with feedback loops and entropy-guided prioritization for biomedical hypothesis generation~\cite{ke2025biodisco}. The framework separates concerns among specialized agents, enabling more focused and effective hypothesis exploration. DORA AI Scientist presents a multi-agent virtual research team for scientific exploration, discovery, and automated report generation, demonstrating the potential of collaborative AI systems in accelerating research workflows~\cite{naumov2025dora}.
+
+Multi-agent collaboration mechanisms have been extensively surveyed, revealing key design principles including role specialization, communication protocols, and coordination strategies~\cite{tran2025multiagent,lin2025survey}. Role specialization enables agents to develop expertise in specific domains, improving the quality of their contributions to collaborative tasks. Specialization-oriented assignment strategies match agent capabilities to task requirements, optimizing overall system performance~\cite{lin2025survey}.
+
+However, existing multi-agent systems for hypothesis generation often lack human-inspired collaboration patterns and closed-loop evaluation mechanisms. The separation between hypothesis generation and validation stages limits the ability to iteratively refine hypotheses based on empirical feedback. Moreover, most systems do not explicitly model the distinct roles observed in real scientific teams, such as principal investigators, domain experts, and peer reviewers.
+
+\subsection{Hypothesis Validation and Verification}
+
+The validation of generated hypotheses is as critical as their generation. Recent work has addressed the challenge of verifying scientific claims and detecting hallucinations in language model outputs. POPPER implements an agentic framework for automated validation based on Karl Popper's principle of falsification, where LLM agents design and execute falsification experiments targeting measurable implications of hypotheses~\cite{huang2025automated}. A novel sequential testing framework ensures strict Type-I error control while actively gathering evidence from diverse observations.
+
+Scientific claim verification has gained attention as a means of ensuring the reliability of AI-generated content. ValSci provides an open-source utility for automated large-batch scientific claim verification using language models, reducing hallucination risks by requiring citation of sources~\cite{edelman2025valsci}. The CLEF CheckThat! Lab has established benchmarks for claim detection, normalization, and verification across multiple domains including scientific discourse~\cite{alam2025overview}.
+
+The detection of hallucinations in scientific claims combines prompting strategies with internal state classification to identify potentially false or unsupported statements~\cite{cao2025detecting}. Medical hallucinations in foundation models have been systematically analyzed, revealing the risks of deploying AI systems in healthcare without proper verification mechanisms~\cite{kim2025medical}. These efforts highlight the importance of rigorous validation in automated hypothesis generation systems.
+
+\subsection{Limitations of Current Approaches}
+
+Despite significant advances, existing methods for automated scientific hypothesis generation exhibit several critical limitations:
+
+\textbf{Insufficient fine-grained knowledge construction.} Current systems often rely on coarse-grained entity representations or suffer from noise in unstructured documents, impairing the comprehension and reasoning capabilities of downstream systems. The need for robust fine-grained knowledge graphs that capture semantic units and their heuristic relationships remains unmet.
+
+\textbf{Lack of knowledge evolution traceability.} Most existing approaches rely on superficial semantic similarity or static graph links without modeling dynamic knowledge evolution or providing traceable reasoning paths. The ability to trace the origins of hypotheses and understand their evidentiary foundations is essential for ensuring reliability and interpretability.
+
+\textbf{Absence of human-inspired and role-specialized multi-agent collaboration.} Existing multi-agent systems lack the distinct role specialization observed in real scientific teams and do not implement closed-loop evaluation mechanisms that iteratively refine hypotheses based on feedback. The separation between generation and validation stages limits the quality and reliability of generated hypotheses.
+
+Our work addresses these limitations through the Fine-grained Inspiration Graph-empowered Multi-Agent Collaboration framework (FIG-MAC), which integrates fine-grained knowledge construction, traceable reasoning paths, and role-specialized multi-agent collaboration into a unified closed-loop system for scientific hypothesis generation and validation.
+
+\section{Methodology}
+\label{sec:methodology}
+
+We propose FIG-MAC, a collaborative multi-agent framework designed to automate ASHG by simulating the reasoning process of human research teams. FIG-MAC comprises three components, as shown in Figure \ref{fig2}: (i) a Fine-grained Inspiration Graph (FIG) that provides structured knowledge representation at the level of RQ, SOL, and mechanisms; (ii) a Hybrid Reasoning module that combines semantic vector search with graph-based structural reasoning to discover cross-domain inspiration paths; and (iii) a Multi-Agent Collaboration Framework that orchestrates specialized agents through iterative hypothesis refinement workflows. The overall architecture follows a "retrieve-synthesize-refine" pipeline: agents first retrieve relevant evidence through hybrid reasoning, then synthesize hypotheses using inspiration paths from the FIG, and finally refine outputs through peer review and iterative optimization.
+
+\begin{figure*}[t] 
+\centering
+    \includegraphics[width=1\linewidth]{img/fig2.pdf} 
+    \caption{Fine-grained Inspiration Graph-based Multi-Agent Collaboration(FIG-MAC).} % 图片标题
+    \label{fig2} % 图片标签,用于交叉引用
+\end{figure*}
+
+\subsection{Fine-grained Inspiration Graph Construction}
+\label{sec:graph_construction}
+
+To overcome coarse-grained knowledge representation that obscures innovation mechanisms, we construct the Fine-grained Inspiration Graph (FIG), a heterogeneous knowledge graph $\mathcal{G} = (\mathcal{V}, \mathcal{E}, \mathcal{R})$ encoding scientific papers at unprecedented granularity. Unlike traditional academic graphs modeling paper-level entities and citations, FIG decomposes 26,917 AI papers from five conferences (2019 to 2024) into 21 semantic units per paper, including research questions, solutions, methodologies, and innovations. This yields three primary entity types: Papers ($PAP$), Research Questions ($RQ$), and Solutions ($SOL$), totaling 180,783 nodes (26,917 PAP, 76,933 RQ, and 76,933 SOL).
+
+\textbf{Fine-grained Data Structuring:} The core challenge lies in accurately extracting key information and core entities from raw text. We perform fine-grained structured parsing on each paper, dividing the full text into 21 semantic units. This ultimately forms a three-level knowledge structure centered on the core entities "PAP - RQ - SOL," with the remaining semantic units serving as supplementary attributes.
+
+\textbf{Entity Extraction:} We employ a two-stage pipeline to ensure parsing quality. First, 500 papers are manually annotated and refined to 423 standardized samples, which fine-tune a Qwen-based extractor. This model then processes the full corpus, generating structured semantic units for each paper, forming a three-level hierarchy: PAP $\rightarrow$ RQ $\rightarrow$ SOL, with remaining units as attributes.
+
+\textbf{Relation Construction:} FIG encodes two relation classes: (1) Hierarchical relations ($r_{\text{has\_rq}}$, $r_{\text{has\_sol}}$) mapping intra-paper structures (26,917 PAP $\times$ $\sim$3 RQ each), and (2) Cross-paper relations ($r_{\text{related}}$, $r_{\text{inspired}}$) capturing inter-paper influences. To construct cross-paper edges at scale, we combine similarity filtering with supervised classification. First, 1,550 entity pairs are manually labeled by three experts (Kappa=0.85) into Related, Inspired, or Irrelevant. Pairs below similarity threshold 0.5788 (determined from Irrelevant distribution) are pruned. Remaining candidates are classified by a fine-tuned Qwen3-8B (validation accuracy 0.9552), yielding 1,809,779 edges: 1,269,774 Related (70.16\%) and 540,005 Inspired (29.84\%). Critically, $r_{\text{inspired}}$ edges explicitly model how SOL in one paper inspire RQ or methodologies in another, capturing innovation pathways invisible to citation analysis.
+
+To discover non-obvious inspiration paths, we employ a Relation Graph Convolutional Network (RGCN) for representation learning:
+\begin{equation}
+\begin{split}
+    \mathbf{h}_i^{(l+1)} = \sigma \Bigg( &\sum_{r \in \mathcal{R}} \sum_{j \in \mathcal{N}_r(i)} \frac{{W}_r^{(l)} {h}_j^{(l)}}{c_{i,r}} + \mathbf{W}_0^{(l)} \mathbf{h}_i^{(l)} \Bigg),
+\end{split}
+\end{equation}
+where $\mathcal{N}_r(i)$ denotes neighbors under relation $r$, $\mathbf{W}_r^{(l)}$ is the relation-specific weight, and $c_{i,r}$ normalizes degree. Node embeddings $\mathbf{h}_i^L$ are decoded via DistMult scorer $s(u,r,v) = (\mathbf{h}_u^L)^T \mathbf{R}_r \mathbf{h}_v^L$ to predict missing links, followed by beam search to extract high-confidence inspiration chains $\pi = \{(pap_i, rq_j, sol_k)\}$ connecting $pap_i$'s SOL to $pap_k$'s RQ via intermediate nodes.
+
+\subsection{Hybrid "Skeleton-Flesh" Reasoning }
+\label{sec:hybrid_reasoning}
+
+To address shallow reasoning in standard RAG systems that rely solely on semantic similarity and miss structurally relevant but semantically distant inspirations, we propose a Hybrid Reasoning Method executing dual-stream search in parallel. Given query $q$, Vector Retrieval $\mathcal{R}_V(q)$ identifies topically relevant papers via dense embeddings (the "flesh"), while Graph Retrieval $\mathcal{R}_G(q)$ traverses FIG to extract inspiration paths connecting $q$ to SOL through $r_{\text{inspired}}$ edges (the "skeleton"). Integration merges structural backbones with semantic evidence:
+\begin{equation}
+\begin{split}
+    \mathcal{I}(\mathcal{R}_V, \mathcal{R}_G) = &\text{GraphSkeleton}(\mathcal{R}_G) \\
+    &+ \text{VectorEnrichment}(\mathcal{R}_V).
+\end{split}
+\end{equation}
+Paths are ranked by composite scoring:
+\begin{equation}
+\begin{split}
+    \text{score}(\pi) = &\alpha \cdot \text{sim}(q, q_i) \\
+    &+ \beta \cdot \text{conf}(q_i \rightarrow s_j) \\
+    &+ \gamma \cdot \text{conf}(s_j \rightarrow pap_k),
+\end{split}
+\end{equation}
+with constraint $\alpha+\beta+\gamma=1$, where $\text{conf}(\cdot)$ is RGCN-predicted link probability. This yields hypotheses that are structurally novel (leveraging cross-domain $r_{\text{inspired}}$ chains) yet technically grounded (validated by vector similarity).
+
+\subsection{Multi-Agent Collaboration Framework}
+\label{sec:workflow}
+
+To overcome single-agent systems lacking perspective diversity and simplistic multi-agent patterns without specialized roles, FIG-MAC orchestrates eight specialized agents mimicking research team dynamics: Scholar Scour (evidence gathering), Idea Igniter (hypothesis drafting), Dr. Qwen Technical/Practical/Ethics (parallel domain review), Dr. Qwen Leader (synthesis), Critic Crucible (peer review), Reviser (targeted revision), Prof. Qwen Editor (polishing). Each agent is formalized as:
+
+\begin{equation}
+    A_i = (\mathcal{S}_i, \mathcal{A}_i, \mathcal{O}_i, \pi_i, \mathcal{M}_i, \mathcal{T}_i),
+\end{equation}
+where $\mathcal{S}_i$ is the state space, $\mathcal{A}_i$ is the action space, $\mathcal{O}_i$ is the observation function, $\pi_i$ is the role-specific policy, $\mathcal{M}_i = (M_i^p, M_i^c)$ is the dual-memory structure with persistent memory $M_i^p$ and conversational memory $M_i^c$, and $\mathcal{T}_i$ is the tool set. State evolution follows:
+\begin{align}
+    s_i^{(t+1)} &= f_i\big(s_i^{(t)}, a_i^{(t)}, o_i^{(t)}, \mathcal{C}^{(t)}\big), \\
+    a_i^{(t)} &\sim \pi_i\big(s_i^{(t)}, \mathcal{C}^{(t)}\big),
+\end{align}
+where $\mathcal{C}^{(t)}$ is the shared context aggregated from retrieval evidence and inter-agent messages.
+
+
+Context Management: To handle context-length constraints, agents maintain dual memory and prune conversational history by relevance. Each agent selects top-$L_{\max}$ messages:
+\begin{equation}
+\begin{aligned}
+    M_i^{c'} = \arg\max_{\mathcal{M}' \subseteq M_i^c} &\sum_{\mathbf{m} \in \mathcal{M}'} \text{score}(\mathbf{m}, s_i) \\
+    \text{s.t.} \quad &|\mathcal{M}'| \leq L_{\max},
+\end{aligned}
+\end{equation}
+where scoring balances recency, semantic similarity, and LLM-judged quality:
+\begin{equation}
+\begin{split}
+    \text{score}(\mathbf{m}, s_i) = &\alpha \exp(-\lambda \Delta t) \\
+    &+ \beta \cos\big(\text{embed}(\mathbf{m}), s_i\big) \\
+    &+ \gamma\, \text{LLM}_{\text{judge}}(\mathbf{m}),
+\end{split}
+\end{equation}
+with constraint $\alpha+\beta+\gamma=1$. This preserves critical feedback while mitigating confirmation bias.
+
+Parallel Review: During ANALYSIS, three independent reviewers operate concurrently, aggregated via confidence-aware weighting:
+\begin{align}
+    R_{\text{Analysis}} &= \sum_{k} w_k\, \text{normalize}(R_k), \\
+    w_k &= \frac{\exp(\text{confidence}(R_k)/\tau)}{\sum_j \exp(\text{confidence}(R_j)/\tau)},
+\end{align}
+where $k \in \{\text{Tech},\text{Prac},\text{Eth}\}$ and $\tau$ controls weight sharpness. Parallel vetting reduces hallucinated or infeasible hypotheses.
+
+State-Driven Workflow: The collaboration follows a state machine $\mathcal{SM}=(\mathcal{S},\mathcal{T},s_0,s_F)$ with sequential phases: LITERATURE, IDEATION, ANALYSIS, SYNTHESIS, REVIEW, and REVISION/POLISH. After REVIEW, transition is determined by:
+\begin{equation}
+    \mathcal{T}(s, c) =
+    \begin{cases}
+        \text{POLISH} & \text{if } q \geq \theta \lor i \geq I_{\max}, \\
+        \text{REVISION} & \text{otherwise},
+    \end{cases}
+\end{equation}
+where $s$ denotes the REVIEW state, $q$ is review score, $\theta$ quality threshold, $i$ iteration count, and $I_{\max}$ iteration budget. Revision applies feedback to refine hypotheses:
+\begin{align}
+    Q_{\text{review}} &= \text{Review}(H^{(i)}), \\
+    H^{(i+1)} &= \text{Revise}\big(H^{(i)}, Q_{\text{review}}\big).
+\end{align}
+This closed loop mirrors peer review practice, yielding progressively refined hypotheses with traceable justifications.
+
+\section{Experiments}
+\subsection{Evaluation Setup}
+
+\textbf{Datasets:} We evaluate FIG-MAC on the Fine-grained Paper Dataset (FPD), which we constructed from five premier conferences (ACL, EMNLP, NAACL, EACL, AAAI) covering natural language processing and artificial intelligence research from 2019 to 2024. The dataset comprises 26,917 high-quality papers with fine-grained semantic annotations, as shown in Appendix~\ref{tab:dataset_sources}. Each paper is parsed into 21 semantic units forming a three-level knowledge structure centered on "PAP - RQ - SOL." For evaluation, we randomly selected 150 diverse RQ as test queries spanning multiple subfields to assess cross-domain ASHG capabilities.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{ACL} & \textbf{EMNLP} & \textbf{NAACL} & \textbf{EACL} & \textbf{AAAI}  \\
+\midrule
+5,877 & 7,539 & 2,086 & 991 & 10,424  \\
+\bottomrule
+\end{tabular}
+\caption{Dataset Paper Sources by Conference}
+\label{tab:dataset_sources}
+\end{table}
+
+\textbf{Baseline:} We compare our framework with three state-of-the-art methods: 
+(1) Virtual-Scientists (VirSci)~\cite{DBLP:journals/corr/abs-2410-09403}, a multi-agent method with team-based discussion mechanisms; 
+(2) AI Scientist-v2~\cite{DBLP:journals/corr/abs-2408-06292}, an end-to-end agentic method using tree search for discovery; 
+(3) CoI-Agent~\cite{li2024chain}, a framework simulating a chain of ideas for research development.
+
+\textbf{Evaluation Metrics:} To holistically assess the quality of generated hypotheses, we propose a comprehensive Three-Tier Evaluation Framework that integrates objective semantic novelty, provenance integrity, and subjective expert assessment. 
+
+(1) Objective Semantic Novelty ($ON_{raw}$) quantifies innovation through embedding-based similarity analysis\cite{su-etal-2025-many}. Given a hypothesis $h$ with embedding $\mathbf{e}_h$, we retrieve the top-$N=500$ similar papers and partition them into historical and contemporary sets. The raw novelty score is computed as:
+\begin{equation}
+   \text{ON}_{\text{raw}}(h) = \frac{\text{HD}(h) \times \ln\big(1 + \text{CI}(h)\big)}{\text{CD}(h) + \delta},
+\end{equation}
+where $\text{HD}(h)$ measures historical dissimilarity, $\text{CI}(h)$ captures contemporary impact, and $\text{CD}(h)$ represents contemporary dissimilarity. 
+
+(2) Provenance-Adjusted Novelty ($P$) distinguishes genuine innovation from simple content replication by modeling source-hypothesis relationships. The score is defined as:
+\begin{equation}
+\begin{split}
+   P(h) = \text{ON}_{\text{raw}}(h) \times [\gamma \cdot G(h) + (1 - \gamma)],
+\end{split}
+\end{equation}
+where the provenance factor:
+\begin{equation}
+\begin{split}
+    G(h) = &\alpha(1 - S_{\text{src}}(h)) + \beta U_{\text{src}}(h),
+\end{split}
+\end{equation}
+penalizes high source replication ($S_{src}$) while rewarding source diversity ($U_{src}$). 
+
+(3) Subjective Quality Assessment employs Qwen-Max as an expert reviewer to evaluate hypotheses on five critical dimensions: Novelty, Significance, Effectiveness, Clarity, and Feasibility (1-10 scale each). This multi-layered approach ensures that generated ideas are not only semantically novel but also technically grounded and traceable.
+
+\textbf{Experimental Configuration:}
+We use a FAISS vector database containing 26,917 computer science papers (2019 to 2024) and a knowledge graph comprising 26,917 PAP, 76,933 RQ, and 76,933 SOL. All methods use Qwen text-embedding-v2 with embedding dimension $d=1536$ for semantic similarity computation.
+
+For RGCN training on FIG, we employ a 2-layer architecture with hidden dimension 256, DistMult decoder, and additive edge feature aggregation. Training uses mini-batch sampling with fanout [25, 20], batch size 512, learning rate 0.0005, dropout 0.1. The graph is split into 80\% training, 10\% validation, and 10\% test sets. We train for 30 epochs with early stopping ( evaluated every 200 iterations), achieving validation MRR of 0.4563 and test MRR of 0.4599 on Inspired edge prediction. All experiments are conducted on NVIDIA RTX 5090 GPUs (24GB memory) using PyTorch 2.0 with DGL 1.1 for graph operations.
+
+
+\subsection{Main Results}
+\label{sec:main_results}
+Table~\ref{tab:main_results} presents comprehensive evaluation across all methods. Our method achieves the highest provenance-adjusted novelty ($P = \mathbf{0.5209}$), outperforming Virtual-Scientists by 2.4\%, COI by 43.5\%, and AI Scientist by 32.1\%. This improvement is primarily driven by the highest source diversity ($U_{\text{src}} = \mathbf{0.6370}$), confirming the effectiveness of our graph-enhanced hybrid reasoning.
+
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{adjustbox}{max width=\columnwidth}
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Method} & \textbf{HD} $\uparrow$ & \textbf{CD} $\downarrow$ & \textbf{CI} $\uparrow$ & \textbf{ON\_raw} $\uparrow$ & \textbf{S\_src} $\downarrow$ & \textbf{U\_src} $\uparrow$ & \textbf{G} $\uparrow$ & \textbf{P} $\uparrow$ \\
+\midrule
+VirSci & 0.3574 & 0.3468 & 1.0396 & 0.6599 & \textbf{0.0271} & 0.3779 & 0.6731 & 0.5086 \\
+COI & 0.3373 & \textbf{0.3223} & 1.0796 & 0.6515 & 0.6286 & 0.3703 & 0.3709 & 0.3630 \\
+AI Scientist & 0.3442 & 0.3288 & \textbf{1.2610} & \textbf{0.7084} & 0.6371 & 0.3785 & 0.3707 & 0.3945 \\
+\midrule
+\textbf{FIG-MAC} & \textbf{0.4293} & 0.4195 & 1.1465 & 0.6662 & 0.2659 & \textbf{0.6370} & \textbf{0.6855} & \textbf{0.5209} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Quantitative Comparison of ASHG Methods. HD: Historical Dissimilarity; CD: Contemporary Dissimilarity; CI: Contemporary Impact; ON\_raw: Raw Overall Novelty; S\_src: Source Similarity; U\_src: Source Diversity; G: Provenance Factor; P: Provenance-Adjusted Novelty.}
+\label{tab:main_results}
+\end{table}
+
+Detailed analysis reveals that while FIG-MAC ranks second in raw novelty, it achieves the highest historical dissimilarity (HD=0.4293) and strong contemporary relevance (CI=1.1465), indicating hypotheses that are both distinct from past work and aligned with current trends. Crucially, FIG-MAC yields the highest P score (0.5209) and a superior novelty preservation ratio ($P/ON_{raw}=78.2\%$), outperforming VirSci (77.1\%) and AI Scientist (55.7\%). These findings are corroborated by expert assessments (Table \ref{tab:subjective_quality}), where FIG-MAC leads in Novelty (8.02) and Effectiveness (7.13), offering a more robust balance for practical discovery than significance-oriented baselines like COI.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Nov.} $\uparrow$ & \textbf{Sig.} $\uparrow$ & \textbf{Eff.} $\uparrow$ & \textbf{Cla.} $\uparrow$ & \textbf{Fea.} $\uparrow$ \\
+\midrule
+VirSci & 8.00 & 8.76 & 6.97 & 8.03 & \textbf{7.80} \\
+COI & 8.00 & \textbf{8.77} & 6.93 & 8.08 & 7.60 \\
+AI Scientist & 8.00 & 7.69 & 6.97 & \textbf{8.58} & 7.40 \\
+\midrule
+\textbf{FIG-MAC} & \textbf{8.02} & 7.88 & \textbf{7.13} & 8.04 & 7.50 \\
+\bottomrule
+\end{tabular}
+\caption{Subjective Quality Assessment Scores (1-10 scale)}
+\label{tab:subjective_quality}
+\end{table}
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+To verify the contribution of each component in FIG-MAC, we conduct a systematic ablation study across two dimensions: (1) Retrieval Strategy, testing Full Retrieval (Vector + Graph), Vector-only, Graph-only, and No Retrieval; and (2) Method Architecture, comparing our Multi-Agent framework with a Single LLM. Results are summarized in Table \ref{tab:ablation_results}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{adjustbox}{max width=\columnwidth}
+\begin{tabular}{llccc}
+\toprule
+\textbf{Architecture} & \textbf{Retrieval Mode} & \textbf{ON\_raw} $\uparrow$ & \textbf{P} $\uparrow$ & \textbf{U\_src} $\uparrow$ \\
+\midrule
+\multirow{4}{*}{Single LLM} & No Retrieval & 0.2150 & 0.0950 & 0.0000 \\
+ & Graph-only & 0.4100 & 0.2250 & 0.2100 \\
+ & Vector-only & 0.3850 & 0.2100 & 0.1560 \\
+ & Full (Vector+Graph) & 0.4520 & 0.3120 & 0.3850 \\
+\midrule
+\multirow{4}{*}{Multi-Agent} & No Retrieval & 0.2890 & 0.1260 & 0.0000 \\
+ & Graph-only & 0.5120 & 0.3010 & 0.2980 \\
+ & Vector-only & 0.4210 & 0.2450 & 0.1820 \\
+ & \textbf{Full (Vector+Graph)} & \textbf{0.6662} & \textbf{0.5209} & \textbf{0.6370} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Ablation results across 8 configurations. Multi-Agent indicates the FIG-MAC framework.}
+\label{tab:ablation_results}
+\end{table}
+
+Removing FIG traversal (Graph-only vs. Full) causes $U_{\text{src}}$ to drop sharply, confirming structural reasoning is essential for cross-domain discovery. Our Multi-Agent framework consistently outperforms Single LLM, especially in Full Retrieval mode (66.9\% improvement in $P$ score), proving the effectiveness of specialized agents in synthesizing complex evidence.
+
+\subsection{Hyperparametric Analysis}
+\label{sec:hyperparams}
+We evaluate the impact of two key hyperparameters: the number of reasoning Iterations and iterative Revisions (polishing cycles). Table \ref{tab:hyperparam_results} summarizes the performance across objective and subjective metrics.
+
+\begin{table}[H]
+\centering
+\small
+\begin{adjustbox}{max width=\columnwidth}
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Iter.} & \textbf{Rev.} & \textbf{ON\_norm} $\uparrow$ & \textbf{P} $\uparrow$ & \textbf{Sig.} $\uparrow$ & \textbf{Cla.} $\uparrow$ & \textbf{Fea.} $\uparrow$ \\
+\midrule
+1 & 1 & 0.5489 & 0.4510 & 7.5 & 7.8 & 6.2 \\
+1 & 2 & 0.5533 & 0.4589 & 7.5 & 7.7 & 6.3 \\
+1 & 3 & 0.5633 & 0.4652 & 7.6 & 8.0 & 6.5 \\
+2 & 1 & 0.5844 & 0.4809 & 7.6 & 7.9 & 6.8 \\
+2 & 2 & 0.5900 & 0.4917 & 7.6 & 7.9 & 7.0 \\
+2 & 3 & 0.6056 & 0.5066 & 7.7 & 7.8 & 7.2 \\
+3 & 1 & 0.6133 & 0.5128 & 7.8 & 7.9 & 7.2 \\
+3 & 2 & 0.6151 & 0.5151 & \textbf{7.9} & 8.0 & 7.4 \\
+\textbf{3} & \textbf{3} & \textbf{0.6200} & \textbf{0.5209} & 7.8 & \textbf{8.0} & \textbf{7.5} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Hyperparameter analysis. ON\_norm and P are objective metrics; Sig., Cla., and Fea. are LLM-based subjective scores.}
+\label{tab:hyperparam_results}
+\end{table}
+
+The results indicate that the configuration with 3 iterations and 3 revisions achieves the highest scores in core metrics (ON\_norm = 0.6200, P = 0.5209). This confirms that deeper reasoning cycles paired with more extensive refinement rounds allow our multi-agent method to synthesize more complex connections. Interestingly, the Revision phase is crucial to ground the outputs.
+
+\subsection{Case Study}
+\label{sec:case_study}
+
+We present qualitative analyses illustrating how FIG-MAC's three core components—Fine-grained Inspiration Graph, Hybrid Reasoning, and Multi-Agent Collaboration—contribute to ASHG quality.
+
+\subsubsection{Case 1: How Graph-Based Inspiration Enables Cross-Domain Synthesis}
+\label{sec:case1}
+
+Query: "How to mitigate negative transfer in multi-task learning?"
+
+Why FIG-MAC Succeeds: Our method generated a hypothesis integrating capsule network dynamic routing with hierarchical graph attention for conflict-aware task coordination (P=0.548, Expert Score=8.3/10). This success demonstrates the synergy between our three components:
+
+Component 1 - Fine-grained Inspiration Graph: The key innovation came from FIG's \emph{Inspired} edges that explicitly model cross-paper innovation mechanisms. Graph traversal discovered a 3-hop path connecting Computer Vision (Capsule Networks) $\rightarrow$ Graph Learning (Attention Mechanisms) $\rightarrow$ Multi-Task Learning (Conflict Detection). Critically, the semantic similarity between the first and last PAP is only 0.23—far below the typical retrieval threshold of 0.7. Vector-only baselines completely missed this connection, generating generic SOL like "apply gradient surgery" that directly copy existing MTL papers.
+
+Component 2 - Hybrid Reasoning: While graph traversal provided the innovative cross-domain structure (the "skeleton"), vector retrieval enriched it with 4 recent MTL PAP for technical grounding (the "flesh"). This division of labor is essential: graphs discover structurally novel connections; vectors ensure domain-specific feasibility.
+
+Component 3 - Multi-Agent Collaboration: The Practical reviewer flagged a critical feasibility issue ("capsule routing is computationally expensive"), triggering the Reviser agent to add efficiency analysis. This feedback loop, absent in single-agent baselines, improved the hypothesis from 7.8 to 8.3/10, demonstrating how role specialization catches blind spots that individual agents miss.
+
+\subsubsection{Case 2: How Multi-Agent Collaboration Drives Iterative Refinement}
+\label{sec:case2}
+
+Query: "How to adapt pre-training for domain-specific knowledge in specialized fields?"
+
+Why Multi-Agent Architecture Matters: The initial hypothesis (score: 6.9/10) proposed standard "domain-adaptive pre-training by fine-tuning," which three specialized reviewers independently rejected as lacking novelty. After two revision cycles, our method produced "knowledge graph-guided domain adaptation" with GNN-encoded structural constraints (final score: 8.1/10, P improved from 0.38 to 0.52). This 36.8\% improvement demonstrates why multi-agent collaboration is essential:
+
+Advantage 1 - Role Specialization: Three parallel reviewers caught orthogonal weaknesses: Technical ("lacks novelty"), Practical ("unclear construction"), Ethics ("no bias discussion"). Single-agent baselines, lacking this perspective diversity, tend to reinforce their initial direction rather than identify fundamental flaws. The parallel review architecture (Eq. 9-10) ensures each dimension is independently evaluated before synthesis.
+
+Advantage 2 - Iterative Deepening Without Oscillation: Revision 1 added KG construction; Revision 2 added GNN training details. Critically, the dual-memory context management (Eq. 7-8) preserved all prior feedback, enabling \emph{cumulative} refinement. Ablation studies show that without context management, agents oscillate between contradictory revisions, repeatedly "fixing" issues already addressed.
+
+Advantage 3 - State-Driven Workflow: The state machine (Eq. 11) enforces a structured LITERATURE $\rightarrow$ IDEATION $\rightarrow$ ANALYSIS $\rightarrow$ SYNTHESIS $\rightarrow$ REVIEW cycle. This mirrors real research team workflows, where premature evaluation (reviewing before sufficient literature analysis) or skipped validation (generating without reviewing) leads to lower-quality outputs.
+
+\subsubsection{Case 3: When and Why FIG-MAC Fails}
+\label{sec:case3}
+
+Query: "How to apply federated learning to satellite-based environmental monitoring with extreme communication constraints?"
+
+Why FIG-MAC Fails: Our method generated a low-quality hypothesis (P=0.21, Expert Score=5.7/10) that essentially paraphrased existing IoT/edge federated learning papers. This failure reveals the dependency of each component on adequate knowledge coverage:
+
+Component 1 Breakdown - Graph Sparsity: FIG contains only 12 PAP on satellite systems (0.07\% of corpus) with \emph{zero} Inspired edges connecting them to federated learning. Graph traversal returned empty paths, forcing our method to fall back on vector-only retrieval. Without graph structure, FIG-MAC degrades to standard RAG, losing its cross-domain synthesis capability. This demonstrates that \emph{Inspired} edges are critical—mere co-occurrence (Related edges) is insufficient for innovation.
+
+Component 2 Breakdown - Retrieval Degradation: With graph retrieval failing, vector retrieval dominated but only found IoT/edge PAP semantically similar to the query. The hybrid reasoning design assumes graphs provide novel structure while vectors add domain grounding. When graphs are empty, this complementarity breaks: vectors retrieve topically relevant but structurally unoriginal PAP, resulting in paraphrasing rather than synthesis.
+
+Component 3 Breakdown - Multi-Agent Consensus Failure: Reviewers disagreed drastically on feasibility (Technical: 7.2 vs. Practical: 4.8), yet the confidence-weighted aggregation (Eq. 9-10) still passed the hypothesis. The multi-agent architecture assumes agents have sufficient domain knowledge to evaluate hypotheses. In under-represented domains, agents make low-confidence judgments that aggregate poorly, masking fundamental issues.
+
+Fundamental Limitation: FIG-MAC's innovation capacity is bounded by graph density. While it excels at connecting well-represented domains (vision $\leftrightarrow$ NLP $\leftrightarrow$ graph learning), it cannot synthesize knowledge that does not exist in the corpus. Future work must address this through inter-field knowledge graphs spanning multiple scientific disciplines or explicit uncertainty detection for under-represented queries.
+
+\section{Conclusion}
+We introduce FIG-MAC, a collaborative multi-agent framework empowered by a fine-grained inspiration graph for ASHG. Our results demonstrate that integrating structured knowledge with multi-role agent collaboration significantly enhances the novelty and reliability of generated hypotheses.In the future, we will explore further research on integrating ASHG with tools for experimental evaluation.
+
+\section*{Limitations}
+The current method's performance is tied to the quality of the initial fine-grained entity extraction. While our fine-tuned Qwen models achieve high accuracy, complex research logic in extremely niche fields may still be misparsed. Additionally, the computational cost of multi-hop graph traversal and iterative multi-agent discussions is higher than simple RAG methods, presenting a trade-off between discovery quality and inference speed.
+
+\section*{Ethical Statement}
+FIG-MAC is designed to assist researchers in exploring innovative directions and should be used as a heuristic tool rather than a substitute for human scientific judgment. There is a risk that automated methods could be used to generate low-quality or misleading scientific content; we encourage users to rigorously verify all generated hypotheses through experimental validation.
+
+\bibliography{custom}
+
+
+
+
+\end{CJK}
+\end{document}

@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 from camel.agents import BaseAgent
 from camel.messages import BaseMessage
 from camel.models import BaseModelBackend, ModelFactory
-from camel.types import ModelPlatformType, ModelType, OpenAIBackendRole
+from camel.types import ModelPlatformType, ModelType, OpenAIBackendRole, UnifiedModelType
 from camel.responses import ChatAgentResponse
 from camel.memories import ChatHistoryMemory, MemoryRecord, ScoreBasedContextCreator
-from camel.configs import QwenConfig
+from camel.configs import QwenConfig, ZhipuAIConfig
 
 
 class HypothesisTaskResult(BaseModel):
@@ -38,34 +38,63 @@ class CamelNativeAgent(BaseAgent):
         system_prompt: Optional[str] = None,
         tools: Optional[List[Any]] = None,
         memory_config: Optional[Dict[str, Any]] = None,
+        model_platform: Optional[ModelPlatformType] = None,
     ):
         """
         Initialize CAMEL native agent
         
         Args:
             role_name: Agent role name
-            model_type: Model type
+            model_type: Model type (can be ModelType enum or string for custom models)
             model_config: Model configuration
             system_prompt: System prompt
             tools: Tool list
             memory_config: Memory configuration
+            model_platform: Model platform (default: QWEN, can be MOONSHOT for Kimi)
         """
         # Use CAMEL standard QwenConfig configuration (reference FIG-MAC best practices)
         model_config = model_config or {}
         
-        # Create CAMEL standard Qwen configuration
-        # 注意：Qwen API max_tokens 上限为 8192
-        qwen_config = QwenConfig(
-            temperature=model_config.get("temperature", 0.7),
-            max_tokens=min(model_config.get("max_tokens", 8192), 8192),  # 确保不超过 8192
-            top_p=model_config.get("top_p", None),
-            presence_penalty=model_config.get("presence_penalty", None),
-            stream=model_config.get("stream", None),
-            seed=model_config.get("seed", None),
-            stop=model_config.get("stop", None),
-            response_format=model_config.get("response_format", None),
-            extra_body=model_config.get("extra_body", None)
-        )
+        # Detect platform and model type
+        platform = model_platform or ModelPlatformType.QWEN
+        
+        # Handle string model types (for custom models like kimi-k2-5 or glm-5)
+        if isinstance(model_type, str):
+            model_type_str = model_type
+            # For Kimi models, use OpenAI compatibility mode
+            if "kimi" in model_type_str.lower():
+                platform = ModelPlatformType.OPENAI_COMPATIBLE_MODEL
+            # For GLM-5 models, use ZhipuAI platform
+            elif "glm-5" in model_type_str.lower():
+                platform = ModelPlatformType.ZHIPU
+        else:
+            model_type_str = model_type.value if hasattr(model_type, 'value') else str(model_type)
+        
+        # Create configuration based on platform type
+        if platform == ModelPlatformType.ZHIPU or (isinstance(model_type, str) and "glm-5" in model_type_str.lower()):
+            # Use ZhipuAIConfig for GLM-5
+            config = ZhipuAIConfig(
+                temperature=model_config.get("temperature", 0.7),
+                max_tokens=model_config.get("max_tokens", 8192),
+                top_p=model_config.get("top_p", None),
+                stream=model_config.get("stream", None),
+                stop=model_config.get("stop", None),
+                thinking=model_config.get("thinking", None),
+            )
+        else:
+            # Create CAMEL standard Qwen configuration
+            # 注意：Qwen API max_tokens 上限为 8192
+            config = QwenConfig(
+                temperature=model_config.get("temperature", 0.7),
+                max_tokens=min(model_config.get("max_tokens", 8192), 8192),  # 确保不超过 8192
+                top_p=model_config.get("top_p", None),
+                presence_penalty=model_config.get("presence_penalty", None),
+                stream=model_config.get("stream", None),
+                seed=model_config.get("seed", None),
+                stop=model_config.get("stop", None),
+                response_format=model_config.get("response_format", None),
+                extra_body=model_config.get("extra_body", None)
+            )
         
         try:
             # Get timeout from environment variable or use default (1200s = 20min for complex tasks)
@@ -73,14 +102,14 @@ class CamelNativeAgent(BaseAgent):
             default_timeout = float(os.environ.get("CAMEL_MODEL_TIMEOUT", 1200.0))
             
             self.model_backend: BaseModelBackend = ModelFactory.create(
-                model_platform=ModelPlatformType.QWEN,
-                model_type=model_type,
-                model_config_dict=qwen_config.as_dict(),
+                model_platform=platform,
+                model_type=model_type_str,
+                model_config_dict=config.as_dict(),
                 # Pass retry and timeout parameters to constructor rather than model_config_dict
                 max_retries=model_config.get("max_retries", 3),
                 timeout=model_config.get("timeout", default_timeout)
             )
-            print(f"✅ Model backend created successfully: {model_type}")
+            print(f"✅ Model backend created successfully: {model_type_str} on {platform.value}")
         except Exception as e:
             # Throw exception when model creation fails, do not use mock backend
             print(f"❌ Model creation failed: {e}")
@@ -109,7 +138,12 @@ class CamelNativeAgent(BaseAgent):
         if self.model_backend:
             # Create token counter (FIG-MAC reference)
             from camel.utils import OpenAITokenCounter
-            token_counter = OpenAITokenCounter(model_type)
+            # Convert string model_type to UnifiedModelType if needed
+            if isinstance(model_type, str):
+                token_counter_model = UnifiedModelType(model_type)
+            else:
+                token_counter_model = model_type
+            token_counter = OpenAITokenCounter(token_counter_model)
             
             # Create context creator (FIG-MAC reference)
             self.context_creator: ScoreBasedContextCreator = ScoreBasedContextCreator(

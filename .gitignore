@@ -84,6 +84,9 @@ Myexamples/写作相关/
 Myexamples/vdb/
 Scientific_Hypothesis_Reports/
 
+# Ollama models directory
+ollama_models/
+
 # Environment variables
 .env
 .env.local

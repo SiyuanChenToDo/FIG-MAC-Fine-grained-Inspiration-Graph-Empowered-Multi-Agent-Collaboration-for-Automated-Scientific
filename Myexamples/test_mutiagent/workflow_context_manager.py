@@ -23,6 +23,7 @@ from camel.memories import ChatHistoryMemory, ScoreBasedContextCreator, MemoryRe
 from camel.messages import BaseMessage
 from camel.types import OpenAIBackendRole, ModelType
 from camel.utils import OpenAITokenCounter
+from camel.types import UnifiedModelType
 
 
 class WorkflowContextManager:
@@ -38,19 +39,27 @@ class WorkflowContextManager:
     Unlike agent's internal memory, this is shared across the entire workflow.
     """
     
-    def __init__(self, token_limit: int = 32768, model_type: ModelType = ModelType.QWEN_MAX):
+    def __init__(self, token_limit: int = 32768, model_type=None):
         """
         Initialize workflow context manager
         
         Args:
             token_limit: Maximum token limit for context (default: 32768)
-            model_type: Model type for token counting (default: QWEN_MAX)
+            model_type: Model type for token counting (default: QWEN_MAX, can be string for custom models)
         """
         self.logger = logging.getLogger(f"{__name__}.WorkflowContextManager")
         
+        # Handle string model types (for custom models like kimi-k2-5)
+        if model_type is None:
+            model_type = ModelType.QWEN_MAX
+        elif isinstance(model_type, str):
+            # Convert string to UnifiedModelType for OpenAITokenCounter
+            model_type = UnifiedModelType(model_type)
+        
         # Create token counter
         self._token_counter = OpenAITokenCounter(model_type)
-        self.logger.info(f"Created token counter for {model_type}")
+        model_name = model_type.value if hasattr(model_type, 'value') else str(model_type)
+        self.logger.info(f"Created token counter for {model_name}")
         
         # Create context creator with token limit
         self._context_creator = ScoreBasedContextCreator(
