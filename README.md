@@ -6,7 +6,7 @@
 
 [![Architecture](https://img.shields.io/badge/Architecture-State--Machine--Driven-blueviolet?style=for-the-badge)]()
 [![Agents](https://img.shields.io/badge/Agents-8%20Specialized%20Roles-ff6b6b?style=for-the-badge)]()
-[![RAG](https://img.shields.io/badge/RAG-Hybrid%20%28Vector%2BGraph%29-4ecdc4?style=for-the-badge)]()
+[![Reasoning](https://img.shields.io/badge/RAG-Hybrid%20%28Vector%2BGraph%29-4ecdc4?style=for-the-badge)]()
 [![Evaluation](https://img.shields.io/badge/Evaluation-8--Dimensional%20Scoring-45b7d1?style=for-the-badge)]()
 
 **[Overview](#-overview)** • **[Architecture](#-architecture)** • **[Key Innovations](#-key-innovations)** • **[Experiments](#-experiments)** • **[Usage](#-usage)** • **[Citation](#-citation)**
