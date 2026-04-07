@@ -4,10 +4,12 @@
 
 ### *Redefining Automated Scientific Discovery through Structured Multi-Agent Cognition and Cross-Domain Knowledge Graphs*
 
-[![Architecture](https://img.shields.io/badge/Architecture-State--Machine--Driven-blueviolet?style=for-the-badge)]()
-[![Agents](https://img.shields.io/badge/Agents-8%20Specialized%20Roles-ff6b6b?style=for-the-badge)]()
-[![Reasoning](https://img.shields.io/badge/RAG-Hybrid%20%28Vector%2BGraph%29-4ecdc4?style=for-the-badge)]()
-[![Evaluation](https://img.shields.io/badge/Evaluation-8--Dimensional%20Scoring-45b7d1?style=for-the-badge)]()
+[![Architecture](https://img.shields.io/badge/🏛️_Architecture-State--Machine--Driven-blueviolet?style=for-the-badge)]()
+[![Agents](https://img.shields.io/badge/🎭_Agents-8%20Specialized%20Roles-ff6b6b?style=for-the-badge)]()
+[![Reasoning](https://img.shields.io/badge/🧠_RAG-Hybrid%20%28Vector%2BGraph%29-4ecdc4?style=for-the-badge)]()
+[![Evaluation](https://img.shields.io/badge/📊_Evaluation-8--Dimensional%20Scoring-45b7d1?style=for-the-badge)]()
+[![Knowledge](https://img.shields.io/badge/📚_Knowledge_Graph-26K%2B_Papers-orange?style=for-the-badge)]()
+[![Novelty](https://img.shields.io/badge/✨_Novelty-+31.8%25_Improvement-success?style=for-the-badge)]()
 
 **[Overview](#-overview)** • **[Architecture](#-architecture)** • **[Key Innovations](#-key-innovations)** • **[Experiments](#-experiments)** • **[Usage](#-usage)** • **[Citation](#-citation)**
 
@@ -40,6 +42,19 @@
 ### System Design Philosophy
 
 Unlike monolithic LLM approaches that compress the entire scientific workflow into a single inference pass, FIG-MAC adopts a **society-of-minds** architecture inspired by academic research teams:
+
+### 🗂️ Fine-grained Paper Dataset (FPD)
+
+| 📚 Source | 📝 Papers | 🎯 Research Questions | 💡 Solutions |
+|:---------:|:---------:|:---------------------:|:------------:|
+| ACL | 5,877 | 16,542 | 16,542 |
+| EMNLP | 7,539 | 21,263 | 21,263 |
+| NAACL | 2,086 | 5,882 | 5,882 |
+| EACL | 991 | 2,792 | 2,792 |
+| AAAI | 10,424 | 29,454 | 29,454 |
+| **📊 Total** | **26,917** | **76,933** | **76,933** |
+
+*Dataset spans 2019-2024, covering NLP and AI research with 21 semantic units per paper*
 
 ```mermaid
 flowchart TB
@@ -105,17 +120,23 @@ Traditional RAG systems retrieve entire documents, losing the structural semanti
 
 **Innovation**: We model cross-domain inspiration as a **link prediction task** on the knowledge graph, training a GNN to predict which papers might inspire solutions to other research questions.
 
-```
-Inspiration Path Example:
-┌──────────────┐      ┌──────────┐      ┌──────────────┐
-│  RQ: Drug    │─────▶│ Solution:│─────▶│ Paper: Social│
-│  Discovery   │      │ GNN with │      │ Network      │
-│              │      │ Attention│      │ Analysis     │
-└──────────────┘      └────┬─────┘      └──────┬───────┘
-                           │                   │
-                           │  [INSPIRED Edge]  │
-                           │  (GNN Predicted)  │
-                           └───────────────────┘
+```mermaid
+flowchart LR
+    subgraph Source["Source Domain"]
+        RQ["RQ: Drug Discovery"]
+        SOL["Solution: GNN with Attention"]
+    end
+
+    subgraph Target["Target Domain"]
+        PAP["Paper: Social Network Analysis"]
+    end
+
+    RQ --"has_solution"--> SOL
+    SOL -."inspired_by<br/>(GNN Predicted)".-.> PAP
+
+    style RQ fill:#e3f2fd
+    style SOL fill:#e8f5e9
+    style PAP fill:#fff3e0
 ```
 
 ### 2. State Machine-Driven Multi-Agent Workflow
@@ -155,6 +176,40 @@ while current_iteration < max_iterations:
 
 ---
 
+## 🦴 "Skeleton-Flesh" Hybrid Reasoning
+
+At the heart of FIG-MAC lies our dual-path retrieval paradigm that combines **structural skeletons** with **semantic flesh**:
+
+| Component | Mechanism | Purpose | Output |
+|:---------:|:---------:|:-------:|:------:|
+| 🦴 **Skeleton** | Graph Traversal on FIG | Discover cross-domain knowledge evolution paths | Traceable inspiration chains |
+| 🥩 **Flesh** | Vector Retrieval (Qwen-emb-v2) | Enrich paths with domain-specific technical details | Semantic grounding |
+| 🔗 **Fusion** | Hybrid Integration ℐ(𝒯ᵥ, 𝒯ɢ) | Combine structural novelty with technical feasibility | Enriched context for agents |
+
+### Path Scoring Function
+
+Each inspiration chain π = (RQ₀ → SOL → PAPₖ) is ranked by:
+
+```
+score(π) = α·sim(Q, RQ₀) + β·conf(RQₘ → SOLⱼ) + γ·conf(SOLⱼ → PAPₖ)
+```
+
+Where:
+- **sim(Q, RQ₀)**: Cosine similarity between query and entry node
+- **conf(·)**: RGCN-predicted relation confidence via DistMult decoder
+- **α, β, γ**: Weighting hyperparameters (tuned on validation set)
+
+### Performance Impact
+
+| Retrieval Mode | ON_raw ↑ | P ↑ | U_src ↑ | CD ↓ |
+|:--------------:|:--------:|:---:|:-------:|:----:|
+| Vector Only | 0.385 | 0.268 | 0.156 | 0.375 |
+| Graph Only | 0.410 | 0.225 | 0.210 | 0.389 |
+| **Hybrid Skeleton-Flesh** | **0.684** | **0.535** | **0.650** | **0.291** |
+| Improvement | **+77.7%** | **+99.6%** | **+209%** | **-22.4%** |
+
+---
+
 ## 📊 Experiments
 
 ### Comparative Evaluation
@@ -186,17 +241,106 @@ To validate design choices, we conduct ablation experiments across 8 configurati
 - Graph RAG provides **+0.67** improvement over Vector-only
 - Iterative refinement improves final quality by **+1.34** on average
 
-### Evaluation Metrics
+### 🏆 Performance Highlights
 
-**Objective Novelty Metrics** (computed against 150K paper corpus):
-- **ON (Overall Novelty)**: Semantic dissimilarity from existing work
-- **HD (Historical Dissimilarity)**: Distance from past research
-- **CD (Contemporary Dissimilarity)**: Distance from concurrent work
-- **CI (Contemporary Impact)**: Citation potential estimation
+| 🏅 Metric | FIG-MAC | Best Baseline | 🚀 Improvement |
+|:---------:|:-------:|:-------------:|:--------------:|
+| 📊 Source Diversity (U_src) | **0.650** | 0.512 | **+26.9%** 🎯 |
+| ✨ Provenance-Adjusted Novelty (P) | **0.535** | 0.345 | **+55.1%** 🚀 |
+| 🆕 Raw Overall Novelty (ON_raw) | **0.684** | 0.519 | **+31.8%** ⭐ |
+| 📅 Contemporary Alignment (CD) | **0.291** | 0.375 | **-22.4%** ✅ |
 
-**Subjective Quality Dimensions** (LLM-evaluated 1-10 scale):
-- Relevance, Technical Accuracy, Engagement, Originality, Feasibility (100% weight)
-- Clarity, Structure, Conciseness (50% weight)
+### 🎖️ Statistical Significance
+
+Paired Wilcoxon signed-rank tests across 150 RQs confirm all improvements are statistically significant (p < 0.001) with large effect sizes (Cohen's d > 0.8).
+
+### 📊 Detailed Evaluation Framework
+
+**🎯 Objective Novelty Metrics** (computed against 150K paper corpus):
+
+| Metric | Symbol | Formula | Interpretation |
+|:------:|:------:|:-------:|:--------------:|
+| 📜 Historical Dissimilarity | HD | 1 - cos(eₕ, eₚₐₛₜ) | ↑ Higher = More novel vs. past work |
+| 📅 Contemporary Dissimilarity | CD | 1 - cos(eₕ, eₚᵣₑₛₑₙₜ) | ↓ Lower = More aligned with current trends |
+| 📈 Contemporary Impact | CI | PercentileRank(citations) | ↑ Higher = More impactful topic |
+| ✨ Overall Novelty | ON_raw | (HD × CI) / CD | ↑ Higher = Better novelty-feasibility balance |
+
+**Provenance-Adjusted Metrics**:
+- **Source Similarity (S_src)**: Measures hypothesis-source divergence
+- **Source Diversity (U_src)**: Captures cross-domain retrieval diversity
+- **Adjusted Novelty (P)**: ON_raw × [γ(1-S_src) + (1-γ)U_src]
+
+**🎭 Subjective Quality Assessment** (LLM-evaluated 1-10 scale):
+
+| Dimension | Weight | Description |
+|:---------:|:------:|:-----------:|
+| 🆕 Novelty | 100% | Innovation degree vs. existing work |
+| 🎯 Significance | 100% | Potential impact on the field |
+| ⚡ Effectiveness | 100% | Expected performance improvement |
+| 🎨 Engagement | 100% | Reader interest and accessibility |
+| ✅ Feasibility | 100% | Implementation practicality |
+| 📖 Clarity | 50% | Expressive precision |
+| 🏗️ Structure | 50% | Logical organization |
+| ✂️ Conciseness | 50% | Information density |
+
+---
+
+## ⚙️ Technical Configuration
+
+### 🧠 Model Architecture
+
+| Component | Configuration | Details |
+|:---------:|:-------------:|:-------:|
+| 🎯 RGCN Encoder | 2-layer, dim=256 | Relation-aware graph convolution |
+| 🔗 Link Decoder | DistMult | Multi-relation link prediction |
+| 📊 Edge Features | Additive aggregation | Combined node + edge features |
+| 🌐 Training | Fanout=[25,20], BS=512 | Mini-batch neighborhood sampling |
+| ⚡ Optimization | Adam, LR=5e-4 | Early stopping (patience=5) |
+
+### 📈 Graph Neural Network Performance
+
+| Metric | Validation | Test |
+|:------:|:----------:|:----:|
+| 📉 MRR (Mean Reciprocal Rank) | 0.4563 | 0.4599 |
+| 🎯 Hits@1 | 0.3124 | 0.3156 |
+| 🎯 Hits@3 | 0.5241 | 0.5278 |
+| 🎯 Hits@10 | 0.7892 | 0.7914 |
+
+*Trained for 30 epochs on NVIDIA RTX 5090 (32GB)*
+
+### 🌐 Cross-Model Generalization
+
+FIG-MAC achieves consistent improvements across diverse LLM backbones:
+
+| 🤖 Backbone | Method | ON_raw ↑ | P ↑ | U_src ↑ |
+|:-----------:|:------:|:--------:|:---:|:-------:|
+| **Mixtral-8x7b** | Virtual Scientists | 0.438 | 0.318 | 0.275 |
+| | CoI-Agent | 0.462 | 0.348 | 0.305 |
+| | AI Scientist | 0.485 | N/A | N/A |
+| | **FIG-MAC** | **0.585** | **0.462** | **0.565** |
+| **LLaMA3.1-70b** | Virtual Scientists | 0.508 | 0.372 | 0.342 |
+| | CoI-Agent | 0.538 | 0.408 | 0.375 |
+| | AI Scientist | 0.562 | N/A | N/A |
+| | **FIG-MAC** | **0.622** | **0.488** | **0.595** |
+| **Qwen-Max** ⭐ | Virtual Scientists | 0.504 | 0.271 | 0.260 |
+| | CoI-Agent | 0.519 | 0.345 | 0.512 |
+| | AI Scientist | 0.504 | N/A | N/A |
+| | **FIG-MAC** 🏆 | **0.684** | **0.535** | **0.650** |
+
+*Consistent gains across all backbones demonstrate framework robustness*
+
+---
+
+## ✨ Key Features at a Glance
+
+| 🎯 Feature | 💡 Description | 🚀 Impact |
+|:----------:|:--------------:|:---------:|
+| 🦴 **Skeleton-Flesh Reasoning** | Graph paths + Vector enrichment | +77% novelty improvement |
+| 🎭 **8 Specialized Agents** | Role-based collaboration | +2.19 quality points |
+| 🔄 **Iterative Refinement** | Quality-driven feedback loop | +1.34 final quality boost |
+| 📊 **8-Dimensional Evaluation** | Objective + Subjective metrics | Publication-ready assessment |
+| 🌐 **Cross-Model Support** | Mixtral, LLaMA, Qwen | Framework robustness |
+| ⚡ **Regression Protection** | Best-version tracking | Quality guarantee |
 
 ---
 
@@ -324,16 +468,28 @@ fig-mac/
 
 ## 🎓 Research Team (Agent Personas)
 
-| Agent | Model | Specialization |
-|-------|-------|----------------|
-| **Scholar Scour** | Qwen-Max | Literature review with hybrid RAG |
-| **Idea Igniter** | Qwen-Max | Creative hypothesis generation |
-| **Dr. Qwen Technical** | Qwen-Plus | Technical feasibility analysis |
-| **Dr. Qwen Practical** | Qwen-Plus | Implementation pathway design |
-| **Prof. Qwen Ethics** | Qwen-Plus | Impact and ethics assessment |
-| **Dr. Qwen Leader** | Qwen-Max | Hypothesis synthesis and revision |
-| **Critic Crucible** | Qwen-Max | Peer review and quality scoring |
-| **Prof. Qwen Editor** | Qwen-Max | Scientific writing refinement |
+| 🎭 Agent | 🤖 Backbone | 🎯 Role Function | 📝 Key Responsibilities |
+|:--------:|:-----------:|:----------------:|:-----------------------:|
+| 📚 **Scholar Scour** | Qwen-Max | 🔍 Research Assistant | Literature gathering with hybrid RAG |
+| 💡 **Idea Igniter** | Qwen-Max | ✨ Innovator | Creative hypothesis generation |
+| ⚙️ **Dr. Qwen Technical** | Qwen-Plus | 🔬 Technical Reviewer | Scientific validity assessment |
+| 🛠️ **Dr. Qwen Practical** | Qwen-Plus | 📋 Practical Reviewer | Implementation pathway design |
+| ⚖️ **Prof. Qwen Ethics** | Qwen-Plus | 🌍 Ethical Reviewer | Societal impact assessment |
+| 🎯 **Dr. Qwen Leader** | Qwen-Max | 🎪 Coordinator | Hypothesis synthesis & revision |
+| 🔍 **Critic Crucible** | Qwen-Max | 🏛️ Quality Controller | Peer review & quality scoring |
+| ✍️ **Prof. Qwen Editor** | Qwen-Max | 🖊️ Quality Controller | Scientific writing refinement |
+
+### 🔄 Role Collaboration Matrix
+
+| Phase | Primary Role | Supporting Roles | Output |
+|:-----:|:------------:|:----------------:|:------:|
+| 📖 Literature | Scholar Scour | Vector Store, Neo4j KG | Evidence synthesis |
+| 💭 Ideation | Idea Igniter | Research Assistant | 3-5 candidate hypotheses |
+| 🔍 Analysis | 3 Reviewers (Parallel) | Technical/Practical/Ethical | Multi-perspective assessment |
+| 🎨 Synthesis | Dr. Qwen Leader | All reviewers | Unified hypothesis report |
+| ✅ Review | Critic Crucible | Leader (feedback receiver) | Quality score + feedback |
+| 🔄 Revision | Dr. Qwen Leader | Editor | Improved hypothesis |
+| ✨ Polish | Prof. Qwen Editor | Leader | Publication-ready report |
 
 ---
 
