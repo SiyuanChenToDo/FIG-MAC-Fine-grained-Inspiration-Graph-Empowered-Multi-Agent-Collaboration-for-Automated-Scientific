@@ -122,21 +122,17 @@ Traditional RAG systems retrieve entire documents, losing the structural semanti
 
 ```mermaid
 flowchart LR
-    subgraph Source["Source Domain"]
-        RQ["RQ: Drug Discovery"]
-        SOL["Solution: GNN with Attention"]
+    subgraph Source["🌐 Source Domain"]
+        RQ["📋 RQ: Drug Discovery"]
+        SOL["💡 Solution: GNN with Attention"]
     end
 
-    subgraph Target["Target Domain"]
-        PAP["Paper: Social Network Analysis"]
+    subgraph Target["🎯 Target Domain"]
+        PAP["📄 Paper: Social Network Analysis"]
     end
 
-    RQ --"has_solution"--> SOL
-    SOL -."inspired_by<br/>(GNN Predicted)".-.> PAP
-
-    style RQ fill:#e3f2fd
-    style SOL fill:#e8f5e9
-    style PAP fill:#fff3e0
+    RQ -->|has_solution| SOL
+    SOL -.->|inspired_by| PAP
 ```
 
 ### 2. State Machine-Driven Multi-Agent Workflow
