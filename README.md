@@ -41,35 +41,51 @@
 
 Unlike monolithic LLM approaches that compress the entire scientific workflow into a single inference pass, FIG-MAC adopts a **society-of-minds** architecture inspired by academic research teams:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           FIG-MAC COGNITIVE ARCHITECTURE                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   INPUT                    STATE MACHINE FLOW                    OUTPUT      │
-│   ─────                    ───────────────────                   ──────      │
-│                                                                              │
-│   ┌────────┐   ┌─────────────────────────────────────────┐   ┌──────────┐   │
-│   │Research│   │  INIT → LITERATURE → IDEATION → ANALYSIS │   │Scientific│   │
-│   │ Topic  │──▶│     ↓        ↓          ↓         ↓     │──▶│Hypothesis│   │
-│   └────────┘   │  SYNTHESIS → REVIEW →{Decision}→ POLISH  │   │  Report  │   │
-│                │     ↑___________|   (Yes/No)    ↓        │   └──────────┘   │
-│                │              └─────REVISION◄────┘        │                  │
-│                └─────────────────────────────────────────┘                  │
-│                                                                              │
-│   KNOWLEDGE GRAPH LAYER          AGENT LAYER                                │
-│   ─────────────────────          ───────────                                │
-│   ┌───────────────┐              ┌──────────────┐                           │
-│   │ Vector Store  │              │ 8 Specialized│                           │
-│   │ (FAISS Index) │              │    Agents    │                           │
-│   └───────┬───────┘              └──────┬───────┘                           │
-│           │                             │                                    │
-│   ┌───────▼───────┐         ┌───────────▼───────────┐                       │
-│   │   Neo4j KG    │         │  HypothesisTeam       │                       │
-│   │ (Paper-RQ-Sol)│         │  (State Orchestrator) │                       │
-│   └───────────────┘         └───────────────────────┘                       │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Input["📥 Input"]
+        RT[Research Topic]
+    end
+
+    subgraph KGLayer["📚 Knowledge Graph Layer"]
+        VS[Vector Store<br/>FAISS Index]
+        NK[Neo4j KG<br/>Paper-RQ-Sol]
+        VS <-->|Hybrid RAG| NK
+    end
+
+    subgraph AgentLayer["🤖 Agent Layer - 8 Specialized Roles"]
+        subgraph StateMachine["State Machine Workflow"]
+            INIT([INIT])
+            LIT[Literature Review]
+            IDE[Ideation]
+            ANA[Analysis]
+            SYN[Synthesis]
+            REV[Review]
+            DEC{Quality >=<br/>Threshold?}
+            POL[Polish]
+            REB[Revision]
+
+            INIT --> LIT --> IDE --> ANA --> SYN --> REV --> DEC
+            DEC -->|Yes| POL
+            DEC -->|No| REB --> SYN
+        end
+        HT[HypothesisTeam<br/>State Orchestrator]
+    end
+
+    subgraph Output["📤 Output"]
+        SR[Scientific<br/>Hypothesis Report]
+    end
+
+    RT --> LIT
+    VS --> LIT
+    NK --> LIT
+    StateMachine --> HT
+    POL --> SR
+
+    style INIT fill:#e1f5ff
+    style DEC fill:#fff3cd
+    style POL fill:#d4edda
+    style REB fill:#f8d7da
 ```
 
 ---
