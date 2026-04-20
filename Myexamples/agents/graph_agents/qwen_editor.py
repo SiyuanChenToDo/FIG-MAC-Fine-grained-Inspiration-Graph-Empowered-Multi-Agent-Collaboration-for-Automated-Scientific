@@ -2,9 +2,9 @@ from typing import Dict, Any
 
 
 def get_qwen_editor_config() -> Dict[str, Any]:
-    """返回 Prof. Qwen Editor 的完整配置（角色名、系统提示词、模型类型）。
+    """Return the complete configuration for Prof. Qwen Editor (role name, system prompt, model type).
 
-    与 demo 中原始内容保持一致，仅抽取配置，不直接实例化 Agent。
+    Consistent with the original demo content; only extracts configuration without instantiating the Agent directly.
     """
 
     system_prompt = (
