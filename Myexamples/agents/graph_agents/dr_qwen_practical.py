@@ -148,22 +148,19 @@ def validate_practical_config() -> bool:
     # Validate system prompt contains key elements
     prompt = config["system_prompt"]
     required_elements = [
-        "JSON",
-        "analyses",
-        "falsifiability",
-        "experimental_feasibility",
-        "resource_requirements",
-        "timeline",
-        "risk_management",
-        "overall_practical_score",
-        "meta",
+        "Falsifiability",
+        "Experimental Feasibility",
+        "Resource Requirements",
+        "Timeline",
+        "Risk Management",
+        "Overall Practical Score",
         "1-10"
     ]
     
-    for element in required_elements:
-        if element not in prompt:
-            print(f"Missing required element in prompt: {element}")
-            return False
+    missing = [el for el in required_elements if el not in prompt]
+    if missing:
+        print(f"Missing required elements in prompt: {missing}")
+        return False
     
     return True
 
