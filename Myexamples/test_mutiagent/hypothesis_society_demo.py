@@ -58,10 +58,16 @@ try:
 except ImportError:
     _boot_print("[WARNING] python-dotenv not installed, .env file will not be loaded automatically")
 
-# --- FORCE API KEY CONFIGURATION ---
-# Set the API key provided by the user for ALL relevant environment variables
-USER_API_KEY = "sk-17fc6cc742c844aaa05e1fb68eb0ed67"
-DASH_SCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# --- API KEY CONFIGURATION ---
+# Load API key from environment; fail loudly if missing
+USER_API_KEY = os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("QWEN_API_KEY")
+DASH_SCOPE_BASE_URL = os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+if not USER_API_KEY:
+    raise RuntimeError(
+        "DASHSCOPE_API_KEY or QWEN_API_KEY environment variable must be set. "
+        "Example: export DASHSCOPE_API_KEY=sk-..."
+    )
 
 os.environ["QWEN_API_KEY"] = USER_API_KEY
 os.environ["OPENAI_API_KEY"] = USER_API_KEY  # Some OpenAI wrappers might use this
@@ -72,8 +78,8 @@ os.environ["QWEN_API_BASE_URL"] = DASH_SCOPE_BASE_URL
 os.environ["OPENAI_API_BASE_URL"] = DASH_SCOPE_BASE_URL
 os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = DASH_SCOPE_BASE_URL
 
-_boot_print(f"[CONFIG] Forced API Key configuration to: {USER_API_KEY[:5]}...{USER_API_KEY[-4:]}")
-_boot_print(f"[CONFIG] Forced Base URL configuration to: {DASH_SCOPE_BASE_URL}")
+_boot_print(f"[CONFIG] API Key configured from environment: {USER_API_KEY[:5]}...{USER_API_KEY[-4:]}")
+_boot_print(f"[CONFIG] Base URL: {DASH_SCOPE_BASE_URL}")
 # -----------------------------------
 
 # 修复日志重复输出问题：清除重复的 handlers 并配置日志级别
@@ -423,7 +429,11 @@ class HypothesisGenerationSociety:
                 "polish_iterations": polish_iterations
             })
             merged_metadata.setdefault("polish_rounds_completed", getattr(self.team, "polish_rounds_completed", None))
-            merged_metadata.setdefault("workflow_id", getattr(self.team, "output_manager", None).current_workflow_id if hasattr(self.team, "output_manager") and hasattr(self.team.output_manager, "current_workflow_id") else None)
+            # Safely extract workflow_id with None guards
+            workflow_id = None
+            if hasattr(self.team, "output_manager") and self.team.output_manager is not None:
+                workflow_id = getattr(self.team.output_manager, "current_workflow_id", None)
+            merged_metadata.setdefault("workflow_id", workflow_id)
 
             return HypothesisTaskResult(
                 content=final_report,
@@ -461,57 +471,47 @@ class HypothesisGenerationSociety:
             OutputFormatter.warning(f"Failed to extract AI content: {e}")
             return str(raw_response)
     
+    # Pre-compiled regex for content cleaning
+    _MULTISPACE_RE = re.compile(r'[ \t]{2,}')
+    _LEADING_EMPTY_RE = re.compile(r'^(\n)+')
+    _TRAILING_EMPTY_RE = re.compile(r'(\n)+$')
+    _MULTI_EMPTY_RE = re.compile(r'\n{3,}')
+    _MARKDOWN_PREFIX_RE = re.compile(r'^(\s*)([-*+]|\d+\.|```|\$|\\)')
+
     def _clean_and_format_content(self, content: str) -> str:
         """
-        Clean and format AI-generated content - enhanced escape character parsing
-        Ensure AI content becomes readable markdown format
+        Clean and format AI-generated content efficiently.
+        Single-pass regex processing instead of line-by-line iteration.
         """
         if not content:
             return ""
         
-        # First parse escape characters - key step (Stage 1.1 optimization)
-        # REMOVED aggressive replacements that break LaTeX formulas
-        # content = content.replace('\\n', '\n').replace('\\t', '\t')
-        # content = content.replace('\\"', '"').replace("\\'", "'")
-        # content = content.replace('\\\\', '\\')  # Handle double backslashes
-        
-        # Process line by line
+        # Split into lines, process each minimally
         lines = content.split('\n')
-        cleaned_lines = []
+        cleaned = []
+        prev_empty = False
         
         for line in lines:
-            # Remove leading and trailing whitespace, but maintain indentation structure
-            cleaned_line = line.rstrip()
-            # Compress multiple spaces to single space, but maintain markdown indentation
-            if cleaned_line.strip():
-                # Maintain indentation for markdown lists and code blocks
-                if cleaned_line.lstrip().startswith(('- ', '* ', '+ ', '1. ', '2. ', '3. ', '4. ', '5. ', '6. ', '7. ', '8. ', '9. ', '```', '    ', '$', '\\')):
-                    cleaned_lines.append(cleaned_line)
-                else:
-                    # Compress internal spaces but maintain basic structure
-                    cleaned_line = re.sub(r'[ \t]+', ' ', cleaned_line)
-                    cleaned_lines.append(cleaned_line)
-            else:
-                cleaned_lines.append('')
+            line = line.rstrip()
+            if not line:
+                if not prev_empty:
+                    cleaned.append('')
+                    prev_empty = True
+                continue
+            
+            prev_empty = False
+            # Preserve markdown structure; only compress excessive internal spaces
+            if not self._MARKDOWN_PREFIX_RE.match(line):
+                line = self._MULTISPACE_RE.sub(' ', line)
+            cleaned.append(line)
         
-        # Remove consecutive empty lines, but maintain paragraph separation
-        final_lines = []
-        prev_empty = False
-        for line in cleaned_lines:
-            if line.strip():
-                final_lines.append(line)
-                prev_empty = False
-            elif not prev_empty:
-                final_lines.append('')
-                prev_empty = True
+        # Join and normalize consecutive empty lines in one pass
+        text = '\n'.join(cleaned)
+        text = self._MULTI_EMPTY_RE.sub('\n\n', text)
+        text = self._LEADING_EMPTY_RE.sub('', text)
+        text = self._TRAILING_EMPTY_RE.sub('', text)
         
-        # Remove leading and trailing empty lines
-        while final_lines and not final_lines[0].strip():
-            final_lines.pop(0)
-        while final_lines and not final_lines[-1].strip():
-            final_lines.pop()
-        
-        return '\n'.join(final_lines)
+        return text
     
     def _structure_final_report(self, content: str, research_topic: str, metadata: dict = None) -> str:
         """
