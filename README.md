@@ -10,8 +10,9 @@
 [![Evaluation](https://img.shields.io/badge/📊_Evaluation-8--Dimensional%20Scoring-45b7d1?style=for-the-badge)]()
 [![Knowledge](https://img.shields.io/badge/📚_Knowledge_Graph-26K%2B_Papers-orange?style=for-the-badge)]()
 [![Novelty](https://img.shields.io/badge/✨_Novelty-+31.8%25_Improvement-success?style=for-the-badge)]()
+[![Web Demo](https://img.shields.io/badge/🌐_Web_Demo-Live-success?style=for-the-badge)]()
 
-**[Overview](#-overview)** • **[Architecture](#-architecture)** • **[Key Innovations](#-key-innovations)** • **[Experiments](#-experiments)** • **[Usage](#-usage)** • **[Citation](#-citation)**
+**[Overview](#-overview)** • **[Architecture](#-architecture)** • **[Key Innovations](#-key-innovations)** • **[Experiments](#-experiments)** • **[Web Demo](#-live-web-demo)** • **[Usage](#-usage)** • **[Citation](#-citation)**
 
 </div>
 
@@ -340,6 +341,44 @@ FIG-MAC achieves consistent improvements across diverse LLM backbones:
 
 ---
 
+## 🌐 Live Web Demo
+
+Experience FIG-MAC through an interactive web interface — no API key required for demo mode!
+
+### Demo Preview
+
+> 📹 **Demo Video**: Watch the full 8-agent pipeline in action below
+
+<video src="assets/demo.webm" width="100%" controls autoplay muted loop>
+  Your browser does not support the video tag.
+</video>
+
+### Quick Start (Web Demo)
+
+```bash
+cd web_demo
+pip install fastapi uvicorn sse-starlette
+python -c "import uvicorn; from app import app; uvicorn.run(app, host='0.0.0.0', port=8080)"
+# Open http://localhost:8080 in your browser
+```
+
+### Two Modes
+
+| Mode | Backend | API Key Required | Duration | Best For |
+|:-----|:--------|:-----------------|:---------|:---------|
+| 🎬 **Demo** | Pre-recorded workflow data | ❌ No | ~45s | First-time exploration, UI showcase |
+| ⚡ **Realtime** | Live CAMEL multi-agent pipeline | ✅ Yes (Qwen/DashScope) | 5-10 min | Actual hypothesis generation |
+
+### UI Highlights
+
+- **🎨 Glassmorphism Design** — Premium frosted-glass interface with animated particle background
+- **🎯 Agent Round-Table** — Live visualization of 8 agents collaborating in real-time
+- **📊 Interactive Charts** — Radar charts (8-dimension quality) and bar charts (agent contribution) via Chart.js
+- **🧮 LaTeX Math Rendering** — Publication-ready formulas with KaTeX
+- **📱 Responsive Layout** — Works on desktop and tablet
+
+---
+
 ## 🚀 Usage
 
 ### Environment Setup
@@ -405,6 +444,19 @@ fig-mac/
 ├── LICENSE                      # License file
 ├── requirements.txt             # Python dependencies
 ├── .env.example                 # Environment variables template
+│
+├── web_demo/                    # 🌐 Interactive web interface
+│   ├── app.py                   # FastAPI backend (SSE streaming)
+│   ├── templates/
+│   │   └── index.html           # SPA frontend
+│   ├── static/
+│   │   ├── css/style.css        # Glassmorphism UI styles
+│   │   ├── js/app.js            # Frontend logic
+│   │   ├── js/animations.js     # Particle background animations
+│   │   └── data/demo_workflow.json  # Pre-recorded demo data
+│   └── streamers/
+│       ├── demo_streamer.py     # Demo mode SSE generator
+│       └── realtime_streamer.py # Realtime mode SSE generator
 │
 ├── src/                         # Core source code (organized from root)
 │   ├── pipeline/                # Inspiration retrieval pipelines

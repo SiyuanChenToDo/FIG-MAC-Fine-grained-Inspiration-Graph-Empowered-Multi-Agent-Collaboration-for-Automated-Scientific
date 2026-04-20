@@ -2,31 +2,86 @@
 
 Get started with FIG-MAC in 5 minutes!
 
-## 📦 Installation
+---
+
+## 🌐 Fastest Way: Web Demo (No API Key Required!)
+
+The easiest way to experience FIG-MAC is through the interactive web interface. **Demo mode** runs entirely with pre-recorded data — no API key needed.
+
+### Step 1: Start the Web Server
+
+```bash
+cd web_demo
+pip install fastapi uvicorn sse-starlette
+python -c "import uvicorn; from app import app; uvicorn.run(app, host='0.0.0.0', port=8080)"
+```
+
+### Step 2: Open Your Browser
+
+Navigate to **`http://localhost:8080`**
+
+### Step 3: Run Demo Mode
+
+1. Click **"Begin Discovery"** on the landing page
+2. Enter a research topic (or click an example chip)
+3. Ensure **Simulation** mode is selected (toggle off)
+4. Click **"Generate Hypothesis"**
+5. Watch the 8-agent round-table collaborate in real-time!
+
+> ⏱️ Demo completes in ~45 seconds with full visualization.
+
+---
+
+## 📦 Full Installation (For Real Hypothesis Generation)
 
 ### Step 1: Clone Repository
+
 ```bash
-git clone https://github.com/yourusername/fig-mac.git
-cd fig-mac
+git clone https://github.com/SiyuanChenToDo/FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific.git
+cd FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific
 ```
 
 ### Step 2: Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### Step 3: Configure Environment
+
 ```bash
 cp .env.example .env
 # Edit .env and add your QWEN_API_KEY
 ```
 
+Or set directly:
+```bash
+export DASHSCOPE_API_KEY="your-api-key"
+export CAMEL_MODEL_TIMEOUT=1800  # 30 min for long revision prompts
+```
+
+---
+
 ## 🎯 First Run
 
-### Option 1: Command Line
+### Option 1: Web Interface (Realtime Mode)
+
 ```bash
-export QWEN_API_KEY="your-api-key"
-export CAMEL_CONTEXT_TOKEN_LIMIT=40000
+cd web_demo
+python -c "import uvicorn; from app import app; uvicorn.run(app, host='0.0.0.0', port=8080)"
+```
+
+Then:
+1. Open `http://localhost:8080`
+2. Toggle to **Realtime** mode
+3. Enter your research topic
+4. Wait 5-10 minutes for the full CAMEL pipeline
+
+### Option 2: Command Line
+
+```bash
+export DASHSCOPE_API_KEY="your-api-key"
+export CAMEL_MODEL_TIMEOUT=1800
 
 python -c "
 import asyncio
@@ -46,7 +101,8 @@ asyncio.run(main())
 "
 ```
 
-### Option 2: Python Script
+### Option 3: Python Script
+
 Create `run_research.py`:
 
 ```python
@@ -56,8 +112,8 @@ import os
 from Myexamples.test_mutiagent.hypothesis_society_demo import HypothesisGenerationSociety
 
 # Set environment variables
-os.environ["QWEN_API_KEY"] = "your-api-key"
-os.environ["CAMEL_MODEL_TIMEOUT"] = "1200"
+os.environ["DASHSCOPE_API_KEY"] = "your-api-key"
+os.environ["CAMEL_MODEL_TIMEOUT"] = "1800"
 os.environ["CAMEL_CONTEXT_TOKEN_LIMIT"] = "40000"
 
 async def main():
@@ -102,6 +158,8 @@ Run it:
 python run_research.py
 ```
 
+---
+
 ## 📊 Understanding Output
 
 ### Generated Files
@@ -133,6 +191,8 @@ The system evaluates hypotheses across 8 dimensions:
 
 **Final Score** = 25% Internal (Peer Review) + 75% External (8-Dimensional)
 
+---
+
 ## 🔧 Common Configurations
 
 ### Fast Mode (Quick Results)
@@ -162,18 +222,23 @@ export KG_PATH="path/to/your/knowledge_graph.json"
 export VDB_PATH="path/to/your/vector_db"
 ```
 
+---
+
 ## 🐛 Troubleshooting
+
+### Issue: API Timeout During Revision
+**Cause**: Dr. Qwen Leader's revision prompt is very long and DashScope has a ~600s server-side limit.
+
+**Solution**: The code now has graceful degradation — if revision times out, it retains the previous synthesis version and continues. To reduce timeout likelihood:
+```bash
+export CAMEL_MODEL_TIMEOUT=1800  # 30 minutes
+export MAX_ITERATIONS=1          # Fewer revision rounds
+```
 
 ### Issue: Token Truncation
 **Solution**: Increase context limit
 ```bash
 export CAMEL_CONTEXT_TOKEN_LIMIT=60000
-```
-
-### Issue: Timeout Errors
-**Solution**: Increase timeout
-```bash
-export CAMEL_MODEL_TIMEOUT=1800  # 30 minutes
 ```
 
 ### Issue: API Rate Limits
@@ -189,6 +254,8 @@ time.sleep(5)  # Between API calls
 export PARALLEL_WORKERS=1
 ```
 
+---
+
 ## 📚 Next Steps
 
 - [Architecture Guide](docs/ARCHITECTURE.md)
@@ -198,8 +265,7 @@ export PARALLEL_WORKERS=1
 
 ## 💬 Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/fig-mac/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/fig-mac/discussions)
-- **Email**: figmac-team@example.com
+- **Issues**: [GitHub Issues](https://github.com/SiyuanChenToDo/FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SiyuanChenToDo/FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific/discussions)
 
 Happy Researching with FIG-MAC! 🔬🤖
