@@ -1358,9 +1358,30 @@ class HypothesisTeam:
             
         except Exception as e:
             # CAMEL native exception handling - BaseAgent automatically handles common exceptions and retries
+            error_msg = str(e)
             self.logger.error(f"CAMEL native task failed for {agent.role_name}: {e}")
             
-            # Create failure result using result processor
+            # Detect API timeout (DashScope / OpenAI style) and return graceful failure instead of crashing
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or "RequestTimeOut" in error_msg:
+                self.logger.warning(
+                    f"API timeout detected for {agent.role_name}. Returning failed result instead of raising."
+                )
+                timeout_result = self.result_processor.create_hypothesis_result(
+                    content=f"API request timed out: {error_msg}",
+                    failed=True,
+                    task_type="camel_native_task",
+                    metadata={
+                        "agent": agent.role_name,
+                        "result_key": result_key,
+                        "error": "api_timeout",
+                        "error_detail": error_msg,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                self.results[result_key] = timeout_result
+                return timeout_result
+            
+            # Create failure result using result processor for non-timeout errors
             failed_result = self.result_processor.create_hypothesis_result(
                 content=f"Task execution failed: {str(e)}",
                 failed=True,
@@ -1952,19 +1973,32 @@ List 5-8 specific technical innovations. For each:
                     OutputFormatter.info(f"[ITERATION PROGRESS] Scores: {' -> '.join([f'{s:.2f}' for s in self.iteration_scores])}")
                 
             else:
-                OutputFormatter.error(f"Hypothesis revision failed: {result.content}")
-                raise RuntimeError(f"Revision execution failed: {result.content}")
+                # Graceful degradation: revision failed (e.g., API timeout), keep previous synthesis
+                OutputFormatter.warning(f"Hypothesis revision failed: {result.content}")
+                OutputFormatter.warning("Graceful degradation: retaining previous synthesis version and continuing to next phase")
+                # Restore previous synthesis so the pipeline can continue
+                self.results["synthesis"] = synthesis_result
+                # Record the failure for reporting
+                self.results["revision_error"] = self.result_processor.create_hypothesis_result(
+                    content=f"Revision skipped: {result.content}",
+                    failed=True,
+                    task_type="revision",
+                    metadata={"error": result.content, "agent": "Dr. Qwen Leader", "iteration": self.current_iteration, "degraded": True}
+                )
                 
         except Exception as e:
+            # Graceful degradation: unexpected exception during revision
             OutputFormatter.error(f"Error during hypothesis revision: {e}")
-            # Create failure result
+            OutputFormatter.warning("Graceful degradation: retaining previous synthesis version and continuing to next phase")
+            # Create failure result but do NOT raise — keep pipeline alive
             self.results["revision_error"] = self.result_processor.create_hypothesis_result(
                 content=f"Hypothesis revision failed: {str(e)}",
                 failed=True,
                 task_type="revision",
-                metadata={"error": str(e), "agent": "Dr. Qwen Leader", "iteration": self.current_iteration}
+                metadata={"error": str(e), "agent": "Dr. Qwen Leader", "iteration": self.current_iteration, "degraded": True}
             )
-            raise
+            # Restore previous synthesis so downstream phases have valid content
+            self.results["synthesis"] = synthesis_result
     
     async def _polish_phase(self):
         """Final polishing phase - executed by Prof. Qwen Editor"""
