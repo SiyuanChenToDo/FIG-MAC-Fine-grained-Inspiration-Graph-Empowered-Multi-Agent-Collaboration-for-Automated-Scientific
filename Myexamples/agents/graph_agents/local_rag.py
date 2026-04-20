@@ -1,8 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Set
 
 import os
 import json
 import sys
+import traceback
+import logging
 
 # Add project root to sys.path to import inspire_pipeline
 PROJECT_ROOT = '/root/autodl-tmp'
@@ -29,6 +31,18 @@ except ImportError:
 
 # Global singleton for the pipeline
 _INSPIRATION_PIPELINE = None
+
+# Logger for production-grade logging
+logger = logging.getLogger(__name__)
+
+# Debug flag controlled by environment variable
+_LOCAL_RAG_DEBUG = str(os.environ.get("LOCAL_RAG_DEBUG", "")).lower() in ("1", "true", "yes", "y")
+
+
+def _debug_print(msg: str) -> None:
+    """Print debug message only when LOCAL_RAG_DEBUG is enabled."""
+    if _LOCAL_RAG_DEBUG:
+        print(msg)
 
 def build_rag_prompt_for_agent(
     query: str,
@@ -133,7 +147,7 @@ def get_inspiration_pipeline():
         BASE_DIR = Path('/root/autodl-tmp')
         GRAPH_DIR = BASE_DIR / 'data/graphstorm_partitioned'
         RAW_DIR = BASE_DIR / 'data'
-        MODEL_DIR = BASE_DIR / 'workspace/inference_results/best_model_v1/predictions' 
+        MODEL_DIR = BASE_DIR / 'workspace/inference_results/custom_kg_v6c/predictions' 
         
         # ===== SET HUGGINGFACE MIRROR BEFORE INITIALIZATION =====
         # Set HuggingFace mirror to avoid network issues
@@ -179,17 +193,17 @@ def get_inspiration_pipeline():
 
 def run_local_rag(
     query: str,
-    json_file_path: str = 'D:\Backup\Downloads\camel-master2\camel-master\Myexamples\data/final_data/final_custom_kg_papers.json',
+    json_file_path: str = '/root/autodl-tmp/data/final_data/final_custom_kg_papers.json',
     base_vdb_path: str = 'Myexamples/vdb/camel_faiss_storage',
-    paper_attributes: List[str] | None = None,
-    attributes_to_vectorize: dict | None = None,
+    paper_attributes: Optional[List[str]] = None,
+    attributes_to_vectorize: Optional[Dict[str, List[str]]] = None,
     neo4j_url: Optional[str] = None,
     neo4j_username: Optional[str] = None,
     neo4j_password: Optional[str] = None,
     build_if_missing: bool = True,
-    use_new_structure: bool = None,
-    max_index_size_mb: int | None = 512,
-    enabled_attributes: dict | None = None,
+    use_new_structure: Optional[bool] = None,
+    max_index_size_mb: Optional[int] = 512,
+    enabled_attributes: Optional[Dict[str, Set[str]]] = None,
     return_structured: bool = True,
     enable_vector_retrieval: bool = True,
     enable_graph_retrieval: bool = True,
@@ -286,25 +300,29 @@ def run_local_rag(
             except ValueError:
                 pass
 
-    # Explicitly hardcode API Key/URL (consistent with test_graph.py), ensure this function is independently usable
-    os.environ["OPENAI_COMPATIBILITY_API_KEY"] = "sk-f97b45fe14844ba98d405488499434b7"
-    os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    os.environ["QWEN_API_KEY"] = os.environ["OPENAI_COMPATIBILITY_API_KEY"]
-    os.environ["QWEN_API_BASE_URL"] = os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"]
+    # API Key/URL from environment variables (security-hardened)
+    api_key = os.environ.get("OPENAI_COMPATIBILITY_API_KEY") or os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("QWEN_API_KEY")
+    api_base = os.environ.get("OPENAI_COMPATIBILITY_API_BASE_URL") or os.environ.get("QWEN_API_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_COMPATIBILITY_API_KEY or DASHSCOPE_API_KEY environment variable must be set. "
+            "Example: export DASHSCOPE_API_KEY=sk-..."
+        )
+    # Propagate to CAMEL's expected env vars
+    os.environ["OPENAI_COMPATIBILITY_API_KEY"] = api_key
+    os.environ["OPENAI_COMPATIBILITY_API_BASE_URL"] = api_base
+    os.environ["QWEN_API_KEY"] = api_key
+    os.environ["QWEN_API_BASE_URL"] = api_base
 
-    # Initialize embedding model (requires external OPENAI_COMPATIBILITY_API_KEY/URL to be set)
-    DEBUG = str(os.environ.get("LOCAL_RAG_DEBUG", "")).lower() in ("1", "true", "yes", "y")
-    if DEBUG:
-        print(f"[RAG][DEBUG] run_local_rag called with query: {query}")
+    _debug_print(f"[RAG][DEBUG] run_local_rag called with query: {query}")
     try:
         embedding_model = OpenAICompatibleEmbedding(
             model_type="text-embedding-v2",
-            api_key=os.environ.get("OPENAI_COMPATIBILITY_API_KEY") or os.environ.get("QWEN_API_KEY"),
-            url=os.environ.get("OPENAI_COMPATIBILITY_API_BASE_URL") or os.environ.get("QWEN_API_BASE_URL"),
+            api_key=api_key,
+            url=api_base,
         )
     except Exception as e:
-        if DEBUG:
-            print("[RAG][DEBUG] Embedding model init failed:", repr(e))
+        _debug_print(f"[RAG][DEBUG] Embedding model init failed: {repr(e)}")
         raise
 
     # 载入或按需构建 FAISS 索引（支持新旧两种结构）
@@ -344,9 +362,8 @@ def run_local_rag(
                         storage.load()
                         attribute_storages[storage_key] = storage
                         loaded_attrs.append(attr_display)
-                    except (UnicodeDecodeError, Exception) as e:
-                        print(f"Warning: Failed to load FAISS storage for {attr_display}: {e}")
-                        print(f"Skipping {attr_display} attribute for now.")
+                    except Exception as e:
+                        logger.warning("Failed to load FAISS storage for %s: %s", attr_display, e)
                         continue
                 elif build_if_missing:
                     # 构建新索引
@@ -360,8 +377,8 @@ def run_local_rag(
                     try:
                         with open(json_file_path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError):
-                        # 如果无法构建则跳过该属性
+                    except (FileNotFoundError, json.JSONDecodeError) as e:
+                        logger.warning("Failed to build FAISS index for %s: %s", attr_display, e)
                         continue
                     texts_to_embed: List[str] = []
                     metadata_for_records: List[dict] = []
@@ -396,12 +413,9 @@ def run_local_rag(
     # 结束向量检索部分
 
     if not attribute_storages:
-        # Neither available index nor allowed to build, directly try graph retrieval and answer generation later
-        if DEBUG:
-            print("[RAG][DEBUG] No FAISS storages available (none loaded/built)")
-        pass
-    elif DEBUG:
-        print(f"[RAG][DEBUG] FAISS storages -> loaded: {loaded_attrs}, built: {built_attrs}")
+        _debug_print("[RAG][DEBUG] No FAISS storages available (none loaded/built)")
+    else:
+        _debug_print(f"[RAG][DEBUG] FAISS storages -> loaded: {loaded_attrs}, built: {built_attrs}")
 
     # 向量检索查询
     all_results: List[str] = []
@@ -409,8 +423,7 @@ def run_local_rag(
         try:
             query_embedding = embedding_model.embed(obj=query)
         except Exception as e:
-            if DEBUG:
-                print("[RAG][DEBUG] Embedding query failed:", repr(e))
+            _debug_print(f"[RAG][DEBUG] Embedding query failed: {repr(e)}")
             query_embedding = None
         
         for storage_key, storage in attribute_storages.items():
@@ -423,8 +436,7 @@ def run_local_rag(
                     except Exception as e:
                         # 格式化存储键用于错误信息
                         key_str = f"{storage_key[0]}.{storage_key[1]}" if isinstance(storage_key, tuple) else storage_key
-                        if DEBUG:
-                            print(f"[RAG][DEBUG] Vector query failed for attr='{key_str}':", repr(e))
+                        _debug_print(f"[RAG][DEBUG] Vector query failed for attr='{key_str}': {repr(e)}")
                 if results:
                     for res in results:
                         payload = res.record.payload
@@ -452,44 +464,35 @@ def run_local_rag(
             print("[RAG] Vector retrieval skipped (ablation experiment)")
 
     vector_result = "\n\n".join(all_results) if all_results else "No relevant documents found in the local vector database."
-    if DEBUG:
-        print(f"[RAG][DEBUG] Vector search hits: {len(all_results)}")
+    _debug_print(f"[RAG][DEBUG] Vector search hits: {len(all_results)}")
 
     # === Graph Inspiration Pipeline Integration ===
     graph_result = ""
     if enable_graph_retrieval:
         try:
-            print("\n[RAG] 🔗 Starting Knowledge Graph Inspiration Pipeline...")
-            print("[RAG] Query for graph retrieval:", query[:100] + "..." if len(query) > 100 else query)
+            logger.info("[RAG] Starting Knowledge Graph Inspiration Pipeline...")
+            _debug_print(f"[RAG] Query for graph retrieval: {query[:100]}..." if len(query) > 100 else f"[RAG] Query for graph retrieval: {query}")
             pipeline = get_inspiration_pipeline()
             if pipeline:
-                print("[RAG] ✅ ScientificInspirationPipeline initialized successfully")
-                # Run the pipeline and get the report content
-                # We use default min_paths=3, start_top_k=5 as per user preference
-                print("[RAG] Running graph retrieval (min_paths=3, start_top_k=5)...")
+                logger.info("[RAG] ScientificInspirationPipeline initialized successfully")
+                _debug_print("[RAG] Running graph retrieval (min_paths=3, start_top_k=5)...")
                 graph_result = pipeline.get_report(query, min_paths=3, start_top_k=5)
-                print(f"[RAG] ✅ Knowledge graph inspiration report generated ({len(graph_result)} chars)")
+                logger.info("[RAG] Knowledge graph inspiration report generated (%d chars)", len(graph_result))
                 if len(graph_result) > 0 and "未找到" not in graph_result and "未发现" not in graph_result:
-                    print(f"[RAG] Graph result preview (first 300 chars):\n{graph_result[:300]}...")
+                    _debug_print(f"[RAG] Graph result preview (first 300 chars):\n{graph_result[:300]}...")
                 elif len(graph_result) == 0:
-                    print("[RAG] ⚠️ Warning: Graph result is empty (no inspiration paths found)")
+                    logger.warning("[RAG] Graph result is empty (no inspiration paths found)")
                 else:
-                    print(f"[RAG] ⚠️ Warning: Graph result indicates no paths found: {graph_result[:100]}")
+                    logger.warning("[RAG] Graph result indicates no paths found: %s", graph_result[:100])
             else:
                 graph_result = "ScientificInspirationPipeline could not be initialized (pipeline is None)."
-                print("[RAG] ❌ Warning: ScientificInspirationPipeline initialization failed (returned None)")
-                print("[RAG] This may be due to:")
-                print("  - Missing data files (graphstorm_partitioned, neo4j_export, etc.)")
-                print("  - Network issues downloading HuggingFace models")
-                print("  - Import errors in inspire_pipeline.py")
+                logger.warning("[RAG] ScientificInspirationPipeline initialization failed (returned None)")
         except Exception as e:
-            import traceback
             graph_result = f"Error during inspiration generation: {str(e)}"
-            print(f"[RAG] ❌ Error during inspiration generation: {e}")
-            print(f"[RAG] Error traceback:")
-            print(traceback.format_exc()[:500])
+            logger.error("[RAG] Error during inspiration generation: %s", e)
+            logger.error("[RAG] Error traceback: %s", traceback.format_exc()[:500])
     else:
-        print("[RAG] Graph retrieval disabled (ablation experiment)")
+        logger.info("[RAG] Graph retrieval disabled (ablation experiment)")
         graph_result = ""
 
     # ===== STRUCTURE THREE PARTS =====
@@ -523,36 +526,34 @@ def run_local_rag(
             "**Note**: No knowledge graph inspiration paths were retrieved. Please rely on the vector search evidence above."
         )
     
-    # ===== PRINT FOR INSPECTION =====
-    print("\n" + "=" * 100)
-    print("🔍 RAG RETRIEVAL - THREE STRUCTURED PARTS")
-    print("=" * 100)
-    print(f"Query: {query}")
-    print(f"Part 1 (Primary Evidence) Length: {len(primary_evidence)} chars")
-    print(f"Part 2 (Graph Inspiration) Length: {len(graph_inspiration)} chars")
-    print(f"Part 3 (Structured Context) Length: {len(structured_context)} chars")
-    print("=" * 100)
-    
-    print("\n[PART 1: PRIMARY EVIDENCE - Vector Search Results]")
-    print("-" * 100)
-    print(primary_evidence)  # 完整打印，不截断
-    print("-" * 100)
-    
-    print("\n[PART 2: GRAPH INSPIRATION PATHS - Knowledge Graph Skeleton]")
-    print("-" * 100)
-    if graph_inspiration:
-        print("✅ Knowledge graph inspiration paths retrieved:")
-        print(graph_inspiration)  # 完整打印，不截断
-    else:
-        print("⚠️ No knowledge graph inspiration paths retrieved")
-    print("-" * 100)
-    
-    print("\n[PART 3: STRUCTURED CONTEXT - For Next Agent]")
-    print("-" * 100)
-    print(structured_context)  # 完整打印，不截断
-    print("-" * 100)
-    print("=" * 100 + "\n")
-    # ===== END PRINT =====
+    # ===== DEBUG INSPECTION OUTPUT =====
+    if _LOCAL_RAG_DEBUG:
+        print("\n" + "=" * 100)
+        print("🔍 RAG RETRIEVAL - THREE STRUCTURED PARTS")
+        print("=" * 100)
+        print(f"Query: {query}")
+        print(f"Part 1 (Primary Evidence) Length: {len(primary_evidence)} chars")
+        print(f"Part 2 (Graph Inspiration) Length: {len(graph_inspiration)} chars")
+        print(f"Part 3 (Structured Context) Length: {len(structured_context)} chars")
+        print("=" * 100)
+        print("\n[PART 1: PRIMARY EVIDENCE - Vector Search Results]")
+        print("-" * 100)
+        print(primary_evidence)
+        print("-" * 100)
+        print("\n[PART 2: GRAPH INSPIRATION PATHS - Knowledge Graph Skeleton]")
+        print("-" * 100)
+        if graph_inspiration:
+            print("✅ Knowledge graph inspiration paths retrieved:")
+            print(graph_inspiration)
+        else:
+            print("⚠️ No knowledge graph inspiration paths retrieved")
+        print("-" * 100)
+        print("\n[PART 3: STRUCTURED CONTEXT - For Next Agent]")
+        print("-" * 100)
+        print(structured_context)
+        print("-" * 100)
+        print("=" * 100 + "\n")
+    # ===== END DEBUG INSPECTION =====
     
     # Return structured context (ready for next agent, with graph as skeleton)
     return structured_context
