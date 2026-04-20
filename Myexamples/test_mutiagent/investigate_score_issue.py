@@ -1,13 +1,3 @@
-"""
-Deep Investigation of 8.7 Score Issue and Memory System
-深度调查8.7分数问题和记忆系统
-
-This script performs comprehensive analysis to investigate:
-1. Why 8.7 appears so frequently
-2. Whether the memory system correctly prioritizes latest messages
-3. Why iteration scores don't improve
-"""
-
 import json
 import os
 from pathlib import Path
@@ -281,7 +271,7 @@ def main():
     print("DEEP INVESTIGATION: 8.7 Score Issue and Memory System")
     print("=" * 80)
     
-    review_dir = Path("c:/Users/LENOVO/Desktop/camel-master/workflow_outputs/memory_records/review")
+    review_dir = Path(os.environ.get("WORKFLOW_OUTPUT_DIR", "workflow_outputs")) / "memory_records" / "review"
     
     if not review_dir.exists():
         print(f"\n[ERROR] Review directory not found: {review_dir}")
