@@ -9,6 +9,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import time
 import warnings
 from enum import Enum
 from typing import Dict, List, Optional, Any
@@ -33,6 +35,81 @@ from Myexamples.agents.final_evaluation_agent import FinalEvaluationAgent
 from Myexamples.agents.graph_agents.local_rag import run_local_rag
 # Import WorkflowContextManager for workflow-level memory management
 from Myexamples.test_mutiagent.workflow_context_manager import WorkflowContextManager
+
+
+# Pre-compiled regex patterns for performance (avoid re-compiling on every call)
+_QUALITY_SCORE_PATTERNS = [
+    re.compile(r'Quality Score[:\s=]+(\d+(?:\.\d+)?)\s*/\s*10', re.IGNORECASE),
+    re.compile(r'Quality Score[:\s=]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'\*\*Quality Score\*\*[:\s=]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'\*Quality Score\*[:\s=]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'Quality Score\s+of\s+(\d+(?:\.\d+)?)', re.IGNORECASE),
+]
+_QUALITY_SCORE_FALLBACK = re.compile(r'(\d+(?:\.\d+)?)\s*/\s*10')
+_QUALITY_SCORE_JSON = re.compile(r'"overall_quality_score"[:\s]+(\d+(?:\.\d+)?)')
+
+_ACTIONABLE_ITEM_PATTERNS = {
+    "suggestion_headers": re.compile(
+        r'(?:Suggestion|Improvement)\s*\d+[\s:.-]+([^\n]+(?:\n(?!(?:Suggestion|Improvement)\s*\d+|#{1,4}\s|#{1,4}\s(?:Missing|Quality|Strengths|Weaknesses))[^\n]+)*)',
+        re.IGNORECASE | re.MULTILINE
+    ),
+    "markdown_headers": re.compile(
+        r'####\s+[^\n]+\n+([^#]+?)(?=\n####|\n#{1,3}\s|$)',
+        re.MULTILINE
+    ),
+    "missing_elements": re.compile(
+        r'(?:Missing Elements|What is Missing)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+        re.IGNORECASE
+    ),
+    "critical_concerns": re.compile(
+        r'(?:Critical Concerns|Major Issues)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+        re.IGNORECASE
+    ),
+    "weaknesses": re.compile(
+        r'(?:Weaknesses|Limitations)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
+        re.IGNORECASE
+    ),
+    "imperative_sentences": re.compile(
+        r'(?:^|\n)\s*[-*]?\s*([^\n]*(?:should|need to|must|add|include|provide|specify)[^\n]{10,200})',
+        re.IGNORECASE
+    ),
+}
+_ACTIONABLE_BULLET_SPLIT = re.compile(r'[-*]\s*([^\n]+)')
+_ACTIONABLE_FIRST_SENTENCE = re.compile(r'[.!?]\s+')
+_ACTIONABLE_WHITESPACE_NORM = re.compile(r'\s+')
+
+_INTERNAL_SCORE_PATTERNS = [
+    re.compile(r'Quality Score[:\s*]+(\d+(?:\.\d+)?)\s*(?:/\s*10)?', re.IGNORECASE),
+    re.compile(r'\*\*Quality Score\*\*[:\s]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'Technical Soundness[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'Novelty Assessment[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'Clarity Score[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+    re.compile(r'overall_quality_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    re.compile(r'technical_soundness["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    re.compile(r'novelty_assessment["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    re.compile(r'clarity_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+]
+_INTERNAL_SCORE_FALLBACK = re.compile(r'(\d+(?:\.\d+)?)\s*/\s*10')
+
+_DETAILED_SCORE_PATTERNS = {
+    'overall_quality_score': [
+        re.compile(r'Quality Score[:\s*]+(\d+(?:\.\d+)?)\s*(?:/\s*10)?', re.IGNORECASE),
+        re.compile(r'\*\*Quality Score\*\*[:\s]+(\d+(?:\.\d+)?)'),
+        re.compile(r'overall_quality_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    ],
+    'technical_soundness': [
+        re.compile(r'Technical Soundness[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+        re.compile(r'technical_soundness["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    ],
+    'novelty_assessment': [
+        re.compile(r'Novelty Assessment[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+        re.compile(r'novelty_assessment["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    ],
+    'clarity_score': [
+        re.compile(r'Clarity (?:Score|and Presentation)[:\s*]+(\d+(?:\.\d+)?)', re.IGNORECASE),
+        re.compile(r'clarity_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?', re.IGNORECASE),
+    ],
+}
 
 
 class TeamState(Enum):
@@ -542,112 +619,72 @@ class HypothesisTeam:
         }
     
     def _extract_actionable_items(self, review_content: str) -> List[str]:
-        """Extract actionable improvement items from review content"""
-        import re
-        
+        """Extract actionable improvement items using pre-compiled regex patterns."""
         actionable_items = []
         
         try:
-            # Pattern 1: Extract from "Detailed Improvement Suggestions" section
-            # Look for suggestion headers (Suggestion 1:, #### Suggestion 1:, etc.)
-            suggestion_patterns = [
-                r'(?:Suggestion|Improvement)\s*\d+[\s:.-]+([^\n]+(?:\n(?!(?:Suggestion|Improvement)\s*\d+|#{1,4}\s|#{1,4}\s(?:Missing|Quality|Strengths|Weaknesses))[^\n]+)*)',
-                r'####\s+[^\n]+\n+([^#]+?)(?=\n####|\n#{1,3}\s|$)',  # #### headers content
-            ]
-            
-            for pattern in suggestion_patterns:
-                matches = re.findall(pattern, review_content, re.IGNORECASE | re.MULTILINE)
+            for key in ("suggestion_headers", "markdown_headers"):
+                pattern = _ACTIONABLE_ITEM_PATTERNS[key]
+                matches = pattern.findall(review_content)
                 for match in matches:
-                    # Clean up the match
-                    item = match.strip()
-                    if item and len(item) > 20:  # Filter out very short matches
-                        # Truncate to first sentence or 200 chars
-                        first_sentence = re.split(r'[.!?]\s+', item)[0]
+                    item = match.strip() if isinstance(match, str) else match[0].strip()
+                    if item and len(item) > 20:
+                        first_sentence = _ACTIONABLE_FIRST_SENTENCE.split(item)[0]
                         actionable_items.append(first_sentence[:200])
             
-            # Pattern 2: Extract bullet points under specific sections
-            section_patterns = [
-                r'(?:Missing Elements|What is Missing)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
-                r'(?:Critical Concerns|Major Issues)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
-                r'(?:Weaknesses|Limitations)[^:]*:?\s*\n((?:\s*[-*]\s*[^\n]+\n?)+)',
-            ]
-            
-            for pattern in section_patterns:
-                match = re.search(pattern, review_content, re.IGNORECASE)
+            for key in ("missing_elements", "critical_concerns", "weaknesses"):
+                pattern = _ACTIONABLE_ITEM_PATTERNS[key]
+                match = pattern.search(review_content)
                 if match:
                     bullets = match.group(1)
-                    # Extract individual bullet points
-                    bullet_items = re.findall(r'[-*]\s*([^\n]+)', bullets)
+                    bullet_items = _ACTIONABLE_BULLET_SPLIT.findall(bullets)
                     for item in bullet_items:
                         item = item.strip()
                         if item and len(item) > 10:
                             actionable_items.append(item[:200])
             
-            # Pattern 3: Extract sentences containing "should", "need to", "must", "add", "include"
-            imperative_patterns = [
-                r'(?:^|\n)\s*[-*]?\s*([^\n]*(?:should|need to|must|add|include|provide|specify)[^\n]{10,200})',
-            ]
+            pattern = _ACTIONABLE_ITEM_PATTERNS["imperative_sentences"]
+            matches = pattern.findall(review_content)
+            for match in matches:
+                item = match.strip() if isinstance(match, str) else match[0].strip()
+                if item and item not in actionable_items:
+                    actionable_items.append(item[:200])
             
-            for pattern in imperative_patterns:
-                matches = re.findall(pattern, review_content, re.IGNORECASE)
-                for match in matches:
-                    item = match.strip()
-                    if item and item not in actionable_items:
-                        actionable_items.append(item[:200])
-            
-            # Remove duplicates while preserving order
             seen = set()
             unique_items = []
             for item in actionable_items:
-                # Normalize for comparison
-                normalized = re.sub(r'\s+', ' ', item.lower())
+                normalized = _ACTIONABLE_WHITESPACE_NORM.sub(' ', item.lower())
                 if normalized not in seen and len(item) > 15:
                     seen.add(normalized)
                     unique_items.append(item)
             
-            return unique_items[:15]  # Return top 15 items
+            return unique_items[:15]
             
         except Exception as e:
             self.logger.warning(f"Failed to extract actionable items: {e}")
             return []
     
     def _extract_quality_score(self, review_content: str) -> Optional[float]:
-        """Extract quality score from Markdown review content"""
-        import re
-        
+        """Extract quality score from Markdown review content using pre-compiled patterns."""
         try:
-            # Pattern 1: Standard format "Quality Score: X.X/10"
-            # FIX: Added more flexible patterns for better extraction
-            patterns = [
-                r'Quality Score[:\s=]+(\d+(?:\.\d+)?)\s*/\s*10',   # Quality Score: 8.5/10 or Quality Score = 8.5/10
-                r'Quality Score[:\s=]+(\d+(?:\.\d+)?)',             # Quality Score: 8.5 or Quality Score = 8.5
-                r'\*\*Quality Score\*\*[:\s=]+(\d+(?:\.\d+)?)',     # **Quality Score**: 8.5
-                r'\*Quality Score\*[:\s=]+(\d+(?:\.\d+)?)',          # *Quality Score*: 8.5
-                r'Quality Score\s+of\s+(\d+(?:\.\d+)?)',             # Quality Score of 8.5
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, review_content, re.IGNORECASE)
+            for pattern in _QUALITY_SCORE_PATTERNS:
+                match = pattern.search(review_content)
                 if match:
                     score = float(match.group(1))
-                    # Validate score range
                     if 0 <= score <= 10:
                         self.logger.info(f"✅ Quality score extracted from Markdown: {score}/10")
                         return score
                     else:
                         self.logger.warning(f"Invalid score range: {score}")
             
-            # Pattern 2: Fallback to find any number followed by /10
-            fallback_match = re.search(r'(\d+(?:\.\d+)?)\s*/\s*10', review_content)
+            fallback_match = _QUALITY_SCORE_FALLBACK.search(review_content)
             if fallback_match:
                 score = float(fallback_match.group(1))
                 if 0 <= score <= 10:
                     self.logger.warning(f"Score extracted from fallback pattern: {score}/10")
                     return score
             
-            # Pattern 3: Legacy JSON format for backward compatibility
-            json_pattern = r'"overall_quality_score"[:\s]+(\d+(?:\.\d+)?)'
-            json_match = re.search(json_pattern, review_content)
+            json_match = _QUALITY_SCORE_JSON.search(review_content)
             if json_match:
                 score = float(json_match.group(1))
                 if 0 <= score <= 10:
@@ -657,7 +694,7 @@ class HypothesisTeam:
             self.logger.error("❌ Failed to extract quality score from review")
             return None
             
-        except (ValueError, Exception) as e:
+        except (ValueError, TypeError) as e:
             self.logger.warning(f"Failed to extract quality score: {e}")
             return None
     
@@ -713,35 +750,8 @@ class HypothesisTeam:
             rag_time = time.time() - rag_start
             OutputFormatter.success(f"[RAG] Retrieved {len(rag_evidence)} chars of evidence in {rag_time:.2f}s")
             
-            # ===== PRINT RAG EVIDENCE FOR INSPECTION =====
-            print("\n" + "=" * 100)
-            print("📚 RAG RETRIEVED KNOWLEDGE - FULL CONTENT (FOR INSPECTION)")
-            print("=" * 100)
-            print(f"Query: {self.current_topic}")
-            print(f"Retrieval Time: {rag_time:.2f}s")
-            print(f"Total Content Length: {len(rag_evidence)} characters")
-            print("=" * 100)
-            print("\n[FULL RAG EVIDENCE CONTENT]")
-            print("-" * 100)
-            print(rag_evidence)
-            print("-" * 100)
-            
-            # Try to parse and display structured sections if available
-            if "=== PRIMARY EVIDENCE" in rag_evidence:
-                parts = rag_evidence.split("===")
-                if len(parts) >= 3:
-                    print("\n[STRUCTURED BREAKDOWN]")
-                    print("=" * 100)
-                    for i, part in enumerate(parts):
-                        if part.strip():
-                            section_name = part.split("\n")[0].strip() if "\n" in part else part[:50]
-                            print(f"\n--- Section {i+1}: {section_name} ---")
-                            print(part.strip()[:500] + "..." if len(part.strip()) > 500 else part.strip())
-            
-            print("\n" + "=" * 100)
-            print("[END OF RAG EVIDENCE DISPLAY]")
-            print("=" * 100 + "\n")
-            # ===== END PRINT =====
+            # RAG evidence summary (avoid heavy console I/O)
+            OutputFormatter.info(f"[RAG] Evidence summary: {len(rag_evidence)} chars retrieved in {rag_time:.2f}s")
             
             # Store RAG evidence for later use
             self.results["rag_evidence"] = self.result_processor.create_hypothesis_result(
@@ -793,7 +803,6 @@ class HypothesisTeam:
         OutputFormatter.info(f"Created RAG-enhanced literature review task for topic: {self.current_topic}")
         
         # Execute task with timing and detailed logging
-        import time
         start_time = time.time()
         
         try:
@@ -892,7 +901,6 @@ class HypothesisTeam:
         OutputFormatter.info(f"Created ideation task based on literature review")
         
         # Execute task with timing and detailed logging
-        import time
         start_time = time.time()
         
         try:
@@ -1131,7 +1139,6 @@ class HypothesisTeam:
         ]
         
         # Execute parallel analysis with timing
-        import time
         start_time = time.time()
         
         try:
@@ -1587,7 +1594,6 @@ List 5-8 specific technical innovations. For each:
         OutputFormatter.info("Created comprehensive synthesis task")
         
         # Execute synthesis with timing
-        import time
         start_time = time.time()
         
         try:
@@ -1703,7 +1709,6 @@ List 5-8 specific technical innovations. For each:
         OutputFormatter.info("Created comprehensive peer review task")
         
         # Execute review with timing
-        import time
         start_time = time.time()
         
         try:
@@ -1780,7 +1785,10 @@ List 5-8 specific technical innovations. For each:
         quality_score = self._extract_quality_score(review_content)
         
         OutputFormatter.info(f"Revising hypothesis based on peer review feedback")
-        OutputFormatter.info(f"Current quality score: {quality_score:.2f}/10")
+        if quality_score is not None:
+            OutputFormatter.info(f"Current quality score: {quality_score:.2f}/10")
+        else:
+            OutputFormatter.warning("Current quality score: N/A (extraction failed)")
         OutputFormatter.info(f"Target threshold: {self.quality_threshold}/10")
         OutputFormatter.info(f"Original hypothesis: {len(synthesis_content)} characters")
         OutputFormatter.info(f"Review feedback: {len(review_content)} characters")
@@ -1907,7 +1915,6 @@ List 5-8 specific technical innovations. For each:
         OutputFormatter.info("Created comprehensive revision task")
         
         # Execute revision with timing
-        import time
         start_time = time.time()
         
         try:
@@ -2197,48 +2204,27 @@ Output the complete, polished scientific hypothesis document below:
             )
     
     def _extract_internal_scores(self) -> List[float]:
-        """Extract internal scores from review phase for integration - Enhanced for Markdown support"""
+        """Extract internal scores from review phase using pre-compiled patterns."""
         try:
             review_result = self.results.get("review")
             if not review_result or review_result.failed:
-                return [5.0]  # Default score if no review available
+                return [5.0]
             
-            # Try to extract scores from review content
             review_content = review_result.content
             internal_scores = []
             
-            import re
-            # Unified patterns for both Markdown and JSON styles
-            # Priority 1: Markdown "Quality Score: 9.5/10" or "**Quality Score**: 9.5"
-            # Priority 2: JSON "overall_quality_score": 9.5
-            score_patterns = [
-                # Markdown patterns
-                r'Quality Score[:\s*]+(\d+(?:\.\d+)?)\s*(?:/\s*10)?',
-                r'\*\*Quality Score\*\*[:\s]+(\d+(?:\.\d+)?)',
-                r'Technical Soundness[:\s*]+(\d+(?:\.\d+)?)',
-                r'Novelty Assessment[:\s*]+(\d+(?:\.\d+)?)',
-                r'Clarity Score[:\s*]+(\d+(?:\.\d+)?)',
-                # JSON patterns
-                r'overall_quality_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?',
-                r'technical_soundness["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?',
-                r'novelty_assessment["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?',
-                r'clarity_score["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)["\']?'
-            ]
-            
-            for pattern in score_patterns:
-                matches = re.findall(pattern, review_content, re.IGNORECASE)
+            for pattern in _INTERNAL_SCORE_PATTERNS:
+                matches = pattern.findall(review_content)
                 for match in matches:
                     try:
                         score = float(match)
-                        # Ensure score is within valid 1-10 range
                         if 0 <= score <= 10:
                             internal_scores.append(score)
                     except ValueError:
                         continue
             
-            # If we found scores, return them. If not, try a very broad fallback for "X/10"
             if not internal_scores:
-                fallback_matches = re.findall(r'(\d+(?:\.\d+)?)\s*/\s*10', review_content)
+                fallback_matches = _INTERNAL_SCORE_FALLBACK.findall(review_content)
                 for match in fallback_matches:
                     try:
                         score = float(match)
@@ -2248,11 +2234,10 @@ Output the complete, polished scientific hypothesis document below:
                         continue
 
             if internal_scores:
-                # Deduplicate while preserving order (using dict keys)
                 return list(dict.fromkeys(internal_scores))
             
             self.logger.warning("No internal scores extracted, defaulting to 5.0")
-            return [5.0]  # Default score
+            return [5.0]
             
         except Exception as e:
             self.logger.warning(f"Failed to extract internal scores: {e}")
