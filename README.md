@@ -347,9 +347,9 @@ Experience FIG-MAC through an interactive web interface — no API key required 
 
 ### Demo Preview
 
-> 📹 **Full Demo Video**: [`assets/demo.webm`](assets/demo.webm) (2:20, WebM format)
->
-> 💡 **Tip**: To embed the video directly in this README, upload it to a [GitHub Issue](https://github.com/SiyuanChenToDo/FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific/issues/new) and copy the attachment URL into a `<video>` tag below.
+<video src="https://github.com/SiyuanChenToDo/FIG-MAC-Fine-grained-Inspiration-Graph-Empowered-Multi-Agent-Collaboration-for-Automated-Scientific/releases/download/demo-video/demo.webm" width="100%" controls autoplay muted loop>
+  Your browser does not support the video tag.
+</video>
 
 | Landing Page | Agent Round-Table | Final Report |
 |:------------:|:-----------------:|:------------:|
