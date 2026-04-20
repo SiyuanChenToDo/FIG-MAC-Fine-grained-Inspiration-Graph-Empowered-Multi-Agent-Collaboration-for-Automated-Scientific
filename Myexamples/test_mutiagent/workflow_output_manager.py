@@ -332,49 +332,53 @@ class WorkflowOutputManager:
             return self.generate_complete_workflow_report()  # Fallback to basic report
     
     def generate_workflow_summary(self) -> Dict[str, Any]:
-        """Generate workflow summary statistics"""
-        summary = {
-            "total_outputs": len(self.phase_outputs),
-            "successful_outputs": sum(1 for output in self.phase_outputs.values() if output.success),
-            "failed_outputs": sum(1 for output in self.phase_outputs.values() if not output.success),
-            "total_interactions": len(self.interaction_logs),
-            "phases_completed": len(set(output.phase for output in self.phase_outputs.values())),
-            "agents_involved": len(set(output.agent_name for output in self.phase_outputs.values())),
-            "total_content_length": sum(output.content_length for output in self.phase_outputs.values()),
-            "average_content_length": 0,
-            "phase_distribution": {},
-            "agent_contribution": {}
-        }
+        """Generate workflow summary statistics in a single pass."""
+        total_outputs = len(self.phase_outputs)
+        successful_outputs = 0
+        failed_outputs = 0
+        total_content_length = 0
+        phases = set()
+        agents = set()
+        phase_distribution = {}
+        agent_contribution = {}
         
-        # 计算平均内容长度
-        if summary["total_outputs"] > 0:
-            summary["average_content_length"] = summary["total_content_length"] / summary["total_outputs"]
-        
-        # 阶段分布统计
         for output in self.phase_outputs.values():
-            phase = output.phase
-            if phase not in summary["phase_distribution"]:
-                summary["phase_distribution"][phase] = 0
-            summary["phase_distribution"][phase] += 1
-        
-        # 智能体贡献统计
-        for output in self.phase_outputs.values():
-            agent = output.agent_name
-            if agent not in summary["agent_contribution"]:
-                summary["agent_contribution"][agent] = {
+            if output.success:
+                successful_outputs += 1
+            else:
+                failed_outputs += 1
+            total_content_length += output.content_length
+            phases.add(output.phase)
+            agents.add(output.agent_name)
+            
+            phase_distribution[output.phase] = phase_distribution.get(output.phase, 0) + 1
+            
+            if output.agent_name not in agent_contribution:
+                agent_contribution[output.agent_name] = {
                     "outputs": 0,
                     "total_length": 0,
                     "phases": set()
                 }
-            summary["agent_contribution"][agent]["outputs"] += 1
-            summary["agent_contribution"][agent]["total_length"] += output.content_length
-            summary["agent_contribution"][agent]["phases"].add(output.phase)
+            agent_contribution[output.agent_name]["outputs"] += 1
+            agent_contribution[output.agent_name]["total_length"] += output.content_length
+            agent_contribution[output.agent_name]["phases"].add(output.phase)
         
         # Convert sets to lists for JSON serialization
-        for agent_stats in summary["agent_contribution"].values():
+        for agent_stats in agent_contribution.values():
             agent_stats["phases"] = list(agent_stats["phases"])
         
-        return summary
+        return {
+            "total_outputs": total_outputs,
+            "successful_outputs": successful_outputs,
+            "failed_outputs": failed_outputs,
+            "total_interactions": len(self.interaction_logs),
+            "phases_completed": len(phases),
+            "agents_involved": len(agents),
+            "total_content_length": total_content_length,
+            "average_content_length": total_content_length / total_outputs if total_outputs else 0,
+            "phase_distribution": phase_distribution,
+            "agent_contribution": agent_contribution
+        }
     
     def get_phase_outputs(self, phase: str) -> List[PhaseOutput]:
         """Get all outputs for specified phase"""
