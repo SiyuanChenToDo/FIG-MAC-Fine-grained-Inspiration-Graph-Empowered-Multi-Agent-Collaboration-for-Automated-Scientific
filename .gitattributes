@@ -1,0 +1,4 @@
+*.index filter=lfs diff=lfs merge=lfs -text
+*.metadata filter=lfs diff=lfs merge=lfs -text
+neostore.* filter=lfs diff=lfs merge=lfs -text
+assets/*.webm filter=lfs diff=lfs merge=lfs -text
