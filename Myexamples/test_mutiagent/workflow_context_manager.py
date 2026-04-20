@@ -391,5 +391,5 @@ if __name__ == "__main__":
     print(f"\nStats: {stats}")
     
     # Test token limit adjustment
-    manager.set_token_limit(16384)
+    manager.token_limit = 16384
     print(f"\nAfter adjustment: {manager}")
