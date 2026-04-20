@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment & Secrets
+.env
+.env.*
+*.key
+*.secret
+
+# Logs
+*.log
+logs/
+
+# Generated outputs (runtime data)
+Scientific_Hypothesis_Reports/
+debug_context/
+workflow_outputs/
+
+# Screenshots & assets generated during development
+screenshot_*.png
+screenshot_*.jpg
+v*_*.png
+v*_*.jpg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

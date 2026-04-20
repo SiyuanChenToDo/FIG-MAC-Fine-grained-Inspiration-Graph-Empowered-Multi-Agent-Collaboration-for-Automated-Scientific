@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HypothesisForge: AI-Powered Scientific Discovery</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+</head>
+<body>
+    <canvas id="bgCanvas"></canvas>
+    
+    <div id="app">
+        <!-- Page 1: Landing -->
+        <section id="landing-page" class="page active">
+            <div class="landing-content">
+                <div class="badge">🔬 AI for Science</div>
+                <h1 class="gradient-title">HypothesisForge: AI-Powered Scientific Discovery</h1>
+                <p class="subtitle">GraphStorm RGCN × CAMEL Multi-Agent Collective Intelligence</p>
+                <p class="desc">Discover cross-domain inspiration from knowledge graphs and automatically generate verifiable scientific hypotheses through 8 collaborative agents</p>
+                
+                <div class="pipeline-visual">
+                    <div class="pv-step"><span class="pv-icon">🔍</span><span class="pv-label">Semantic Retrieval</span></div>
+                    <div class="pv-arrow">→</div>
+                    <div class="pv-step"><span class="pv-icon">🔗</span><span class="pv-label">Graph Inference</span></div>
+                    <div class="pv-arrow">→</div>
+                    <div class="pv-step"><span class="pv-icon">🤖</span><span class="pv-label">Agent Ensemble</span></div>
+                    <div class="pv-arrow">→</div>
+                    <div class="pv-step"><span class="pv-icon">📝</span><span class="pv-label">Hypothesis Report</span></div>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card glass">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value">0.514</div>
+                        <div class="stat-label">GraphStorm MRR</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon">🤖</div>
+                        <div class="stat-value">8</div>
+                        <div class="stat-label">Collaborative Agents</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon">🔗</div>
+                        <div class="stat-value">389K+</div>
+                        <div class="stat-label">INSPIRED Edges</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon">⚡</div>
+                        <div class="stat-value">RAG</div>
+                        <div class="stat-label">Dual-Channel Retrieval</div>
+                    </div>
+                </div>
+                
+                <div class="system-status" id="landing-status">
+                    <span class="status-dot loading"></span>
+                    <span class="status-text">Checking system components...</span>
+                </div>
+                
+                <button class="start-btn" id="start-btn" onclick="goToInput()">
+                    <span>Begin Discovery</span><span class="arrow">→</span>
+                </button>
+            </div>
+        </section>
+        
+        <!-- Page 2: Input -->
+        <section id="input-page" class="page">
+            <div class="input-content">
+                <button class="back-btn" onclick="goToLanding()">← Back</button>
+                <h2 class="page-title">Research Topic</h2>
+                <p class="page-desc">Describe your research direction of interest. The system will automatically retrieve from the knowledge graph and generate innovative hypotheses.</p>
+                
+                <div class="input-container">
+                    <textarea id="query-input" placeholder="e.g.: multi-task learning with gating mechanism for aspect-based sentiment analysis..." rows="3"></textarea>
+                    <button class="submit-btn" id="submit-btn" onclick="startWorkflow()">
+                        <span class="btn-text">Generate Hypothesis</span><span class="btn-loading" style="display:none">⏳</span>
+                    </button>
+                </div>
+                
+                <div class="examples">
+                    <span class="examples-label">Example Queries:</span>
+                    <button class="example-chip" onclick="setQuery('multi-task learning with gating mechanism')">multi-task learning</button>
+                    <button class="example-chip" onclick="setQuery('graph neural networks for drug discovery')">GNN drug discovery</button>
+                    <button class="example-chip" onclick="setQuery('cross-domain inspiration in NLP')">cross-domain NLP</button>
+                </div>
+                
+                <div class="mode-toggle">
+                    <span class="mode-label">Mode:</span>
+                    <label class="mode-switch">
+                        <input type="checkbox" id="mode-toggle">
+                        <span class="mode-slider">
+                            <span class="mode-text mode-demo">Simulation</span>
+                            <span class="mode-text mode-real">Live Execution</span>
+                        </span>
+                    </label>
+                </div>
+                
+                <div class="system-indicators">
+                    <div class="indicator" id="ind-graphstorm"><span class="ind-dot"></span><span class="ind-label">GraphStorm</span></div>
+                    <div class="indicator" id="ind-faiss"><span class="ind-dot"></span><span class="ind-label">FAISS</span></div>
+                    <div class="indicator" id="ind-agents"><span class="ind-dot"></span><span class="ind-label">Agents</span></div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Page 3: Think Process -->
+        <section id="think-page" class="page">
+            <div class="think-header">
+                <button class="back-btn" onclick="resetAndGoHome()">← Home</button>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                    <div class="progress-labels">
+                        <span class="plabel active" data-phase="init">Initialization</span>
+                        <span class="plabel" data-phase="rag">Semantic Retrieval</span>
+                        <span class="plabel" data-phase="agents">Agent Ensemble</span>
+                        <span class="plabel" data-phase="iter">Iterative Refinement</span>
+                        <span class="plabel" data-phase="done">Completion</span>
+                    </div>
+                </div>
+                <div class="query-display" id="query-display"></div>
+            </div>
+            
+            <div class="think-main">
+                <div class="agent-panel" id="agent-panel">
+                    <h3 class="panel-title">🎯 Agent Collaboration Roundtable</h3>
+                    <div class="round-table" id="agent-list">
+                        <div class="round-table-center" id="round-table-center">
+                            <div class="center-ring"></div>
+                            <div class="center-icon" id="center-icon">🤝</div>
+                            <div class="center-label" id="center-label">Awaiting Collaboration</div>
+                        </div>
+                        <svg class="round-table-svg" id="round-table-svg" viewBox="0 0 420 420">
+                            <!-- Connection lines will be drawn by JS -->
+                        </svg>
+                        <!-- Agents will be positioned by JS -->
+                    </div>
+                </div>
+                <div class="think-content" id="think-content">
+                    <div class="think-stream" id="think-stream"></div>
+                </div>
+            </div>
+            
+            <button class="view-result-btn" id="view-result-btn" style="display:none" onclick="goToResult()">View Final Report →</button>
+        </section>
+        
+        <!-- Page 4: Result -->
+        <section id="result-page" class="page">
+            <div class="result-header">
+                <button class="back-btn" onclick="goToThink()">← Back</button>
+                <button class="back-btn" onclick="resetAndGoHome()">🏠 Home</button>
+            </div>
+            
+            <div class="result-content">
+                <h2 class="result-title">🎉 Hypothesis Generation Complete</h2>
+                
+                <!-- Graph Stats -->
+                <div class="result-section">
+                    <h3 class="section-title">📈 Knowledge Graph Statistics</h3>
+                    <div class="graph-stats-grid" id="graph-stats-grid"></div>
+                </div>
+                
+                <!-- Inspiration Paths -->
+                <div class="result-section">
+                    <h3 class="section-title">🔗 Inspiration Path Visualization</h3>
+                    <p class="section-desc">Cross-domain INSPIRED links predicted by GraphStorm GNN</p>
+                    <div class="inspiration-paths" id="inspiration-paths"></div>
+                </div>
+                
+                <!-- Radar Chart -->
+                <div class="result-section">
+                    <h3 class="section-title">📊 Comprehensive Evaluation</h3>
+                    <div class="chart-container">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Final Report -->
+                <div class="result-section">
+                    <h3 class="section-title">📝 Final Hypothesis Report</h3>
+                    <div class="report-container markdown-body" id="report-content"></div>
+                </div>
+                
+                <!-- Agent Contributions -->
+                <div class="result-section">
+                    <h3 class="section-title">🤖 Agent Contributions</h3>
+                    <div class="contribution-chart-container">
+                        <canvas id="contributionChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Full LLM Outputs -->
+                <div class="result-section">
+                    <h3 class="section-title">💭 Complete Agent Reasoning</h3>
+                    <p class="section-desc">Complete LLM output for each agent</p>
+                    <div class="llm-outputs" id="llm-outputs"></div>
+                </div>
+                
+                <div class="export-buttons">
+                    <button class="export-btn" onclick="exportMarkdown()">📥 Export Markdown</button>
+                    <button class="export-btn" onclick="exportJSON()">📥 Export JSON</button>
+                </div>
+            </div>
+        </section>
+    </div>
+    
+    <script src="/static/js/animations.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
