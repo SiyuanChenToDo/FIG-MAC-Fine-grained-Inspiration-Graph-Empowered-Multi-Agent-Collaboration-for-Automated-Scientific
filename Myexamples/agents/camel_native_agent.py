@@ -4,6 +4,9 @@ CAMEL Native Agent Implementation
 Based on FIG-MAC SciAgent_Async pattern, fully adopts CAMEL framework native mechanisms
 """
 
+import os
+import warnings
+import asyncio
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
@@ -98,7 +101,6 @@ class CamelNativeAgent(BaseAgent):
         
         try:
             # Get timeout from environment variable or use default (1200s = 20min for complex tasks)
-            import os
             default_timeout = float(os.environ.get("CAMEL_MODEL_TIMEOUT", 1200.0))
             
             self.model_backend: BaseModelBackend = ModelFactory.create(
@@ -205,21 +207,8 @@ class CamelNativeAgent(BaseAgent):
             # Use CAMEL native model backend for real AI generation
             response = self.model_backend.run([openai_message])
             
-            # Extract response content from CAMEL ModelResponse or ChatCompletion
-            if hasattr(response, 'choices') and response.choices:
-                # Handle ChatCompletion object (from Qwen/OpenAI API)
-                response_content = response.choices[0].message.content
-            elif hasattr(response, 'output_messages') and response.output_messages:
-                # Get the first output message content
-                response_content = response.output_messages[0].content
-            elif hasattr(response, 'content'):
-                response_content = response.content
-            elif hasattr(response, 'text'):
-                response_content = response.text
-            elif isinstance(response, str):
-                response_content = response
-            else:
-                response_content = str(response)
+            # Extract response content using shared helper
+            response_content = self._extract_response_content(response)
             
             response_message = BaseMessage(
                 role_name=self.role_name,
@@ -285,7 +274,6 @@ class CamelNativeAgent(BaseAgent):
         openai_message = message.to_openai_message(OpenAIBackendRole.USER)
         
         # Use real async AI generation
-        import asyncio
         if asyncio.iscoroutinefunction(self.model_backend.run):
             # If model backend supports async
             try:
@@ -303,21 +291,8 @@ class CamelNativeAgent(BaseAgent):
                 print(f"❌ Sync-in-async AI generation failed: {e}")
                 raise RuntimeError(f"AI model execution failed: {e}")
         
-        # Process response from CAMEL ModelResponse or ChatCompletion
-        if hasattr(response_data, 'choices') and response_data.choices:
-            # Handle ChatCompletion object (from Qwen/OpenAI API)
-            response_content = response_data.choices[0].message.content
-        elif hasattr(response_data, 'output_messages') and response_data.output_messages:
-            # Get the first output message content
-            response_content = response_data.output_messages[0].content
-        elif hasattr(response_data, 'content'):
-            response_content = response_data.content
-        elif hasattr(response_data, 'text'):
-            response_content = response_data.text
-        elif isinstance(response_data, str):
-            response_content = response_data
-        else:
-            response_content = str(response_data)
+        # Extract response content using shared helper
+        response_content = self._extract_response_content(response_data)
         
         response_message = BaseMessage(
             role_name=self.role_name,
@@ -449,7 +424,6 @@ class CamelNativeAgent(BaseAgent):
             
         try:
             # Suppress EmptyMemoryWarning for initial empty state
-            import warnings
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=UserWarning, message=".*ChatHistoryMemory.*empty.*")
                 
@@ -466,6 +440,24 @@ class CamelNativeAgent(BaseAgent):
         except Exception as e:
             print(f"[WARNING] Failed to get context for {self.role_name}: {e}")
             return [], 0
+
+    @staticmethod
+    def _extract_response_content(response_data: Any) -> str:
+        """Extract text content from various CAMEL/OpenAI response formats.
+        
+        Handles ChatCompletion, CAMEL ModelResponse, string, and other types.
+        """
+        if hasattr(response_data, 'choices') and response_data.choices:
+            return response_data.choices[0].message.content or ""
+        if hasattr(response_data, 'output_messages') and response_data.output_messages:
+            return response_data.output_messages[0].content or ""
+        if hasattr(response_data, 'content'):
+            return response_data.content or ""
+        if hasattr(response_data, 'text'):
+            return response_data.text or ""
+        if isinstance(response_data, str):
+            return response_data
+        return str(response_data)
 
     def clear_memory(self) -> None:
         """Clear memory (FIG-MAC mode)"""
