@@ -5,10 +5,11 @@ from .local_rag import run_local_rag
 
 
 def get_scholar_scour_config() -> Dict[str, Any]:
-    """返回 Scholar Scour agent 的配置（角色名、系统提示词、模型、工具）。
+    """Return the configuration for the Scholar Scour agent (role name, system prompt, model, tools).
 
-    该函数仅封装配置，不直接构建 ChatAgent，便于在现有 demo 中复用
-    其已有的 `create_qwen_agent` 逻辑（模型、鉴权等均由原逻辑处理）。
+    This function only encapsulates the configuration and does not directly build a ChatAgent,
+    making it easy to reuse the existing `create_qwen_agent` logic in the demo
+    (model, authentication, etc. are handled by the original logic).
     """
 
     system_prompt = """
