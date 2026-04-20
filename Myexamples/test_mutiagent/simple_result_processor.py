@@ -150,7 +150,7 @@ class SimpleResultProcessor:
     @staticmethod
     def clean_content(content: str) -> str:
         """
-        Clean and standardize content
+        Clean and standardize content while preserving markdown structure.
         
         Args:
             content: Raw content
@@ -162,11 +162,11 @@ class SimpleResultProcessor:
             if not content:
                 return ""
             
-            # Remove excess whitespace characters
-            cleaned = re.sub(r'\s+', ' ', content.strip())
+            # Remove control characters only (preserve whitespace structure)
+            cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content.strip())
             
-            # Remove special characters and control characters
-            cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', cleaned)
+            # Collapse 3+ consecutive newlines to 2 (preserve paragraph breaks)
+            cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
             
             # Ensure content is not empty
             if not cleaned:
@@ -181,20 +181,20 @@ class SimpleResultProcessor:
     @staticmethod
     def extract_key_information(content: str, keys: List[str]) -> Dict[str, str]:
         """
-        从内容中提取关键信息
+        Extract key information from content
         
         Args:
-            content: 内容文本
-            keys: 要提取的关键词列表
+            content: Content text
+            keys: List of keywords to extract
             
         Returns:
-            Dict[str, str]: 提取的关键信息
+            Dict[str, str]: Extracted key information
         """
         extracted = {}
         
         try:
             for key in keys:
-                # 简单的关键词匹配
+                # Simple keyword matching
                 pattern = rf"{key}[：:]\s*([^\n]*)"
                 match = re.search(pattern, content, re.IGNORECASE)
                 if match:
@@ -205,20 +205,20 @@ class SimpleResultProcessor:
             return extracted
             
         except Exception as e:
-            OutputFormatter.error(f"关键信息提取失败: {e}")
+            OutputFormatter.error(f"Key information extraction failed: {e}")
             return {key: "" for key in keys}
     
     @staticmethod
     def validate_content_quality(content: str, min_length: int = 50) -> Dict[str, Any]:
         """
-        验证内容质量
+        Validate content quality
         
         Args:
-            content: 内容文本
-            min_length: 最小长度要求
+            content: Content text
+            min_length: Minimum length requirement
             
         Returns:
-            Dict[str, Any]: 质量验证结果
+            Dict[str, Any]: Quality validation result
         """
         try:
             validation = {
@@ -227,71 +227,71 @@ class SimpleResultProcessor:
                 "issues": []
             }
             
-            # 长度检查
+            # Length check
             if len(content) < min_length:
                 validation["is_valid"] = False
-                validation["issues"].append(f"内容过短，少于{min_length}字符")
+                validation["issues"].append(f"Content too short, less than {min_length} characters")
             
-            # 空内容检查
+            # Empty content check
             if not content.strip():
                 validation["is_valid"] = False
-                validation["issues"].append("内容为空")
+                validation["issues"].append("Content is empty")
             
-            # 重复内容检查
+            # Repetition check
             words = content.split()
             if len(words) > 10:
                 unique_words = set(words)
                 repetition_ratio = 1 - (len(unique_words) / len(words))
                 if repetition_ratio > 0.7:
                     validation["is_valid"] = False
-                    validation["issues"].append("内容重复率过高")
+                    validation["issues"].append("Content repetition rate too high")
             
             return validation
             
         except Exception as e:
-            OutputFormatter.error(f"内容质量验证失败: {e}")
+            OutputFormatter.error(f"Content quality validation failed: {e}")
             return {
                 "is_valid": False,
                 "length": 0,
-                "issues": [f"验证失败: {str(e)}"]
+                "issues": [f"Validation failed: {str(e)}"]
             }
     
     @staticmethod
     def merge_results(results: List[HypothesisTaskResult], 
-                     merge_title: str = "合并结果") -> HypothesisTaskResult:
+                     merge_title: str = "Merged Results") -> HypothesisTaskResult:
         """
-        合并多个结果
+        Merge multiple results
         
         Args:
-            results: 结果列表
-            merge_title: 合并标题
+            results: List of results
+            merge_title: Merge title
             
         Returns:
-            HypothesisTaskResult: 合并后的结果
+            HypothesisTaskResult: Merged result
         """
         try:
             if not results:
                 return SimpleResultProcessor.create_hypothesis_result(
-                    "无结果可合并", 
+                    "No results to merge", 
                     failed=True, 
                     task_type="merge_error"
                 )
             
-            # 检查是否有失败的结果
+            # Check for failed results
             failed_results = [r for r in results if r.failed]
             if failed_results:
                 failed_content = "\n".join([f"- {r.content}" for r in failed_results])
                 return SimpleResultProcessor.create_hypothesis_result(
-                    f"部分结果失败:\n{failed_content}",
+                    f"Some results failed:\n{failed_content}",
                     failed=True,
                     task_type="partial_failure",
                     metadata={"failed_count": len(failed_results), "total_count": len(results)}
                 )
             
-            # 合并成功的结果
+            # Merge successful results
             merged_content = f"# {merge_title}\n\n"
             for i, result in enumerate(results, 1):
-                merged_content += f"## 结果 {i}\n\n{result.content}\n\n"
+                merged_content += f"## Result {i}\n\n{result.content}\n\n"
             
             return SimpleResultProcessor.create_hypothesis_result(
                 merged_content,
@@ -301,9 +301,9 @@ class SimpleResultProcessor:
             )
             
         except Exception as e:
-            OutputFormatter.error(f"结果合并失败: {e}")
+            OutputFormatter.error(f"Result merge failed: {e}")
             return SimpleResultProcessor.create_hypothesis_result(
-                f"结果合并失败: {str(e)}",
+                f"Result merge failed: {str(e)}",
                 failed=True,
                 task_type="merge_error",
                 metadata={"error": str(e)}
@@ -312,13 +312,13 @@ class SimpleResultProcessor:
     @staticmethod
     def get_processing_summary(results: Dict[str, HypothesisTaskResult]) -> Dict[str, Any]:
         """
-        获取处理摘要
+        Get processing summary
         
         Args:
-            results: 结果字典
+            results: Results dictionary
             
         Returns:
-            Dict[str, Any]: 处理摘要
+            Dict[str, Any]: Processing summary
         """
         try:
             summary = {
@@ -344,23 +344,23 @@ class SimpleResultProcessor:
             return summary
             
         except Exception as e:
-            OutputFormatter.error(f"处理摘要生成失败: {e}")
+            OutputFormatter.error(f"Processing summary generation failed: {e}")
             return {
                 "total_results": 0,
                 "error": str(e)
             }
 
 
-# 兼容性函数，保持与现有代码的兼容
+# Compatibility functions to maintain compatibility with existing code
 def extract_ai_content(response: Union[ChatAgentResponse, BaseMessage, str]) -> str:
     """
-    兼容性函数：提取AI内容
+    Compatibility function: Extract AI content
     
     Args:
-        response: 响应对象或字符串
+        response: Response object or string
         
     Returns:
-        str: 提取的内容
+        str: Extracted content
     """
     if isinstance(response, str):
         return response
@@ -369,49 +369,49 @@ def extract_ai_content(response: Union[ChatAgentResponse, BaseMessage, str]) -> 
     elif isinstance(response, BaseMessage):
         return SimpleResultProcessor.extract_content_from_message(response)
     else:
-        OutputFormatter.warning(f"未知响应类型: {type(response)}")
+        OutputFormatter.warning(f"Unknown response type: {type(response)}")
         return str(response)
 
 
 def create_standard_result(content: str, failed: bool = False, 
                          task_type: str = "unknown") -> HypothesisTaskResult:
     """
-    兼容性函数：创建标准结果
+    Compatibility function: Create standard result
     
     Args:
-        content: 内容
-        failed: 是否失败
-        task_type: 任务类型
+        content: Content
+        failed: Whether failed
+        task_type: Task type
         
     Returns:
-        HypothesisTaskResult: 标准结果对象
+        HypothesisTaskResult: Standard result object
     """
     return SimpleResultProcessor.create_hypothesis_result(content, failed, task_type)
 
 
-# 测试功能
+# Test functionality
 if __name__ == "__main__":
-    print("=== 简化结果处理器测试 ===")
+    print("=== Simplified Result Processor Test ===")
     
-    # 测试内容清理
-    test_content = "  这是一个测试内容  \n\n  包含多余空白  "
+    # Test content cleaning
+    test_content = "  This is test content  \n\n  Contains extra whitespace  "
     cleaned = SimpleResultProcessor.clean_content(test_content)
-    print(f"内容清理测试: '{test_content}' -> '{cleaned}'")
+    print(f"Content cleaning test: '{test_content}' -> '{cleaned}'")
     
-    # 测试Markdown格式化
-    formatted = SimpleResultProcessor.format_markdown_content(cleaned, "测试结果")
-    print(f"Markdown格式化测试:\n{formatted}")
+    # Test Markdown formatting
+    formatted = SimpleResultProcessor.format_markdown_content(cleaned, "Test Result")
+    print(f"Markdown formatting test:\n{formatted}")
     
-    # 测试结果创建
+    # Test result creation
     result = SimpleResultProcessor.create_hypothesis_result(
-        "测试内容", 
+        "Test content", 
         failed=False, 
         task_type="test"
     )
-    print(f"结果创建测试: {result}")
+    print(f"Result creation test: {result}")
     
-    # 测试质量验证
+    # Test quality validation
     validation = SimpleResultProcessor.validate_content_quality(cleaned)
-    print(f"质量验证测试: {validation}")
+    print(f"Quality validation test: {validation}")
     
-    OutputFormatter.success("简化结果处理器测试完成")
+    OutputFormatter.success("Simplified Result Processor test completed")
