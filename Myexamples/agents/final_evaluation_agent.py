@@ -20,7 +20,7 @@ class FinalEvaluationAgent(ChatAgent):
     Implements FIG-MAC evaluation standards with 8-dimensional scoring
     """
 
-    # 权重设置：如需调整，可修改该字典
+    # Weight settings: modify this dict to adjust evaluation weights
     EVALUATION_WEIGHTS = {
         "clarity": 0.5,
         "relevance": 1.0,
@@ -190,7 +190,7 @@ Be critical and cautious in your decision."""
             except (TypeError, ValueError):
                 score = 3.0
 
-            # Clamp score to 1-10 区间
+            # Clamp score to [1.0, 10.0] range
             score = max(1.0, min(10.0, score))
 
             dimension_entry["score"] = round(score, 2)
