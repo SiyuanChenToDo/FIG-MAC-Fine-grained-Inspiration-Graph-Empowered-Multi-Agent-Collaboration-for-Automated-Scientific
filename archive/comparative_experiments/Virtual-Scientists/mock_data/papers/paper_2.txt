@@ -1,0 +1,1 @@
+{'title': 'Mock Paper 2', 'abstract': 'This is a mock abstract for paper 2 about AI and Machine Learning concepts.', 'year': 2020, 'citation': 20}

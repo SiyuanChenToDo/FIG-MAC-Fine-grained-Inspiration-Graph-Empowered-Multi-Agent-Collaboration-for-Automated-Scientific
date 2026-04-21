@@ -78,7 +78,6 @@ tmp/
 *.ipynb
 
 # Large example directories - 排除大目录
-archive/
 Myexamples/vdb/
 Scientific_Hypothesis_Reports/
 

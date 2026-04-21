@@ -1,0 +1,39 @@
+[
+    {
+        "config_name": "qwen_plus",
+        "model_type": "openai_chat",
+        "model_name": "qwen-plus",
+        "api_key_env_var": "QWEN_API_KEY",
+        "client_args": {
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        },
+        "generate_args": {
+            "temperature": 0.5,
+            "seed": 123
+        }
+    },
+    {
+        "config_name": "qwen_max",
+        "model_type": "openai_chat",
+        "model_name": "qwen-max",
+        "api_key_env_var": "QWEN_API_KEY",
+        "client_args": {
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        },
+        "generate_args": {
+            "temperature": 0.5,
+            "seed": 123
+        }
+    },
+    {
+        "config_name": "qwen_embedding",
+        "model_type": "openai_embedding",
+        "model_name": "text-embedding-v3", 
+        "api_key_env_var": "QWEN_API_KEY",
+        "client_args": {
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        }
+    }
+]
+
+
