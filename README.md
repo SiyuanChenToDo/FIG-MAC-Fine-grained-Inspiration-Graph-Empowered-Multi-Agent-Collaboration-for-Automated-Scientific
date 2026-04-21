@@ -407,7 +407,7 @@ export HF_MIRROR="https://hf-mirror.com"  # For HuggingFace in China
 
 ```python
 import asyncio
-from Myexamples.test_mutiagent.hypothesis_society_demo import HypothesisGenerationSociety
+from Myexamples.core.hypothesis_society_demo import HypothesisGenerationSociety
 
 async def main():
     society = HypothesisGenerationSociety()
@@ -509,7 +509,7 @@ fig-mac/
 │   │   ├── camel_native_agent.py
 │   │   └── final_evaluation_agent.py
 │   │
-│   ├── test_mutiagent/          # Multi-agent coordination
+│   ├── core/                    # Multi-agent orchestration core
 │   │   ├── hypothesis_team.py   # State machine orchestrator
 │   │   ├── hypothesis_society_demo.py
 │   │   └── workflow_context_manager.py

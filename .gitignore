@@ -78,14 +78,22 @@ tmp/
 *.ipynb
 
 # Large example directories - 排除大目录
-Myexamples/comparative_experiments/
-Myexamples/evaluation_system/
-Myexamples/写作相关/
+archive/
 Myexamples/vdb/
 Scientific_Hypothesis_Reports/
 
 # Ollama models directory
 ollama_models/
+
+# Runtime artifacts
+videos/
+neo4j.dump
+.cache/
+web_demo/static/demo_video.webm
+
+# Archived generated results
+archive/evaluation_system/batch_results/
+archive/build_graph_connections/annotation_data/
 
 # Environment variables
 .env

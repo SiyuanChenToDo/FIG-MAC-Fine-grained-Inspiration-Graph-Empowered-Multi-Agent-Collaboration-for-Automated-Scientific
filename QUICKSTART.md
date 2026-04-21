@@ -85,7 +85,7 @@ export CAMEL_MODEL_TIMEOUT=1800
 
 python -c "
 import asyncio
-from Myexamples.test_mutiagent.hypothesis_society_demo import HypothesisGenerationSociety
+from Myexamples.core.hypothesis_society_demo import HypothesisGenerationSociety
 
 async def main():
     society = HypothesisGenerationSociety()
@@ -109,7 +109,7 @@ Create `run_research.py`:
 #!/usr/bin/env python3
 import asyncio
 import os
-from Myexamples.test_mutiagent.hypothesis_society_demo import HypothesisGenerationSociety
+from Myexamples.core.hypothesis_society_demo import HypothesisGenerationSociety
 
 # Set environment variables
 os.environ["DASHSCOPE_API_KEY"] = "your-api-key"

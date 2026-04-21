@@ -106,7 +106,7 @@ class RealtimeWorkflowStreamer:
         """Run the actual pipeline in a background task."""
         try:
             # Lazy import to avoid heavy initialization at module load time
-            from Myexamples.test_mutiagent.hypothesis_society_demo import HypothesisGenerationSociety
+            from Myexamples.core.hypothesis_society_demo import HypothesisGenerationSociety
 
             society = HypothesisGenerationSociety()
             team = society.create_research_team()

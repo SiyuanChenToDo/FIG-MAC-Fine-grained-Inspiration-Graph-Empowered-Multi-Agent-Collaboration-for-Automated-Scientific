@@ -1,0 +1,2 @@
+# Myexamples.core package
+
