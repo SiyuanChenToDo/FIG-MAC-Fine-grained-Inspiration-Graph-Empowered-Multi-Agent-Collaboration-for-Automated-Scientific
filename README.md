@@ -573,19 +573,6 @@ fig-mac/
 
 ---
 
-## 🎓 Research Team (Agent Personas)
-
-| 🎭 Agent | 🤖 Backbone | 🎯 Role Function | 📝 Key Responsibilities |
-|:--------:|:-----------:|:----------------:|:-----------------------:|
-| 📚 **Scholar Scour** | Qwen-Max | 🔍 Research Assistant | Literature gathering with hybrid RAG |
-| 💡 **Idea Igniter** | Qwen-Max | ✨ Innovator | Creative hypothesis generation |
-| ⚙️ **Dr. Qwen Technical** | Qwen-Plus | 🔬 Technical Reviewer | Scientific validity assessment |
-| 🛠️ **Dr. Qwen Practical** | Qwen-Plus | 📋 Practical Reviewer | Implementation pathway design |
-| ⚖️ **Prof. Qwen Ethics** | Qwen-Plus | 🌍 Ethical Reviewer | Societal impact assessment |
-| 🎯 **Dr. Qwen Leader** | Qwen-Max | 🎪 Coordinator | Hypothesis synthesis & revision |
-| 🔍 **Critic Crucible** | Qwen-Max | 🏛️ Quality Controller | Peer review & quality scoring |
-| ✍️ **Prof. Qwen Editor** | Qwen-Max | 🖊️ Quality Controller | Scientific writing refinement |
-
 ### 🔄 Role Collaboration Matrix
 
 | Phase | Primary Role | Supporting Roles | Output |
@@ -604,7 +591,6 @@ fig-mac/
 
 ```yaml
 # Report Metadata
-Generated: 2026-02-05 23:27:03
 Research Topic: Bridging Multi-task Learning with Gating Mechanisms
 Processing Pipeline: Literature → Ideation → Analysis → Synthesis → Review → Polish
 Iteration Mode: Enabled (Threshold: 8.0/10)
