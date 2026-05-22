@@ -85,12 +85,6 @@ To address these limitations, we propose the Fine-grained Inspiration Graph-empo
 Experimental results demonstrate that FIG-MAC significantly outperforms state-of-the-art methods on source diversity, provenance-adjusted novelty, and raw novelty.
 
 
-<div align="center">
-
-**The result**: *Publication-ready scientific hypotheses with measurable quality metrics across 8 evaluation dimensions*
-
-</div>
-
 ---
 
 ## 🏛️ Architecture
