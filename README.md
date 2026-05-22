@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧠 FIG-MAC: Fine-grained Inspiration Graph Empowered Multi-Agent Collaboration
+# 🧠 FIG-MAC: A Fine-grained Inspiration Graph Empowered Multi-Agent Collaboration for Automated Scientific Hypothesis Generation
 
 ### *Redefining Automated Scientific Discovery through Structured Multi-Agent Cognition and Cross-Domain Knowledge Graphs*
 
@@ -70,17 +70,17 @@ These results suggest that FIG-MAC is evolving beyond a domain-specific AI resea
 
 ---
 
-## 🎯 Overview
+## 📖 Abstract
 
-**Scientific hypothesis generation** represents one of the most cognitively demanding intellectual activities, requiring the synthesis of domain expertise, cross-domain analogical reasoning, rigorous evaluation, and iterative refinement. While Large Language Models (LLMs) have demonstrated remarkable capabilities in individual reasoning tasks, they struggle with the **structured, multi-phase cognitive workflow** inherent to scientific discovery.
+Automated Scientific Hypothesis Generation (ASHG) leveraging large language models (LLMs) aims to harness their strengths in knowledge integration, logical reasoning, and text generation for efficiently producing innovative, verifiable scientific hypotheses. However, existing approaches face three critical limitations: **(i)** insufficient fine-grained knowledge representation, as unstructured context impairs LLM comprehension and reasoning; **(ii)** lack of knowledge evolution traceability, constraining the generation of innovative cross-domain conjectures; **(iii)** absence of human-inspired and role-specialized multi-agent collaboration, failing to leverage the efficient innovation mechanisms arising from cognitive diversity and division of labor among expert roles to complete the full ASHG-evaluation loop. 
 
-**FIG-MAC** addresses this fundamental limitation through three core innovations:
+To address these limitations, we propose the Fine-grained Inspiration Graph-empowered Multi-Agent Collaboration framework (FIG-MAC) including: 
+- **(i) Fine-grained Inspiration Graph module (FIG)** —, to obtain fine-grained structured knowledge representations, where nodes represent academic semantic units and edges encode heuristic relationships among them; 
+- **(ii) "Skeleton-Flesh" hybrid reasoning module** —, fusing FIG-based graph path reasoning as a structural backbone with vector search as semantic enrichment, to obtain the traceable scientific conjecture paths; 
+- **(iii) role-specialized Multi-Agent framework** —, inspired by real scientific teamwork, enabling a closed-loop process of scientific conjecture generation, screening, and validation. 
 
-1. **🔬 Fine-grained Inspiration Graphs (FIG)**: A novel knowledge representation that decomposes academic papers into semantically meaningful components (Research Questions, Solutions, Core Problems) and models cross-domain inspirational relationships via GNN-based link prediction
+Experimental results demonstrate that FIG-MAC significantly outperforms state-of-the-art methods on source diversity, provenance-adjusted novelty, and raw novelty.
 
-2. **🎭 Structured Multi-Agent Architecture**: An 8-agent cognitive system orchestrated through a state machine, where each agent embodies a specialized research role (Literature Reviewer, Creative Ideator, Technical Analyst, etc.)
-
-3. **🔄 Iterative Quality-Driven Refinement**: A peer-review-inspired feedback loop with automatic quality assessment, regression detection, and best-version tracking
 
 <div align="center">
 
