@@ -122,7 +122,7 @@ flowchart TB
         subgraph StateMachine["State Machine Workflow (7 Phases)"]
             LIT[Literature Review]
             IDE[Ideation]
-            ANA[Analysis<br/>(Parallel Review)]
+            ANA["Analysis<br/>(Parallel Review)"]
             SYN[Synthesis]
             REV[Review]
             DEC{Quality >=<br/>Threshold?}
