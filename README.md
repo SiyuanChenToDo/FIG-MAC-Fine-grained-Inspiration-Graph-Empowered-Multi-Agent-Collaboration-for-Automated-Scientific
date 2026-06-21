@@ -166,7 +166,7 @@ Traditional RAG systems retrieve entire documents, losing the structural semanti
 | **RQ (Research Question)** | Core content: up to 4 research questions per paper | `has_rq` from PAP; `has_sol` to SOL |
 | **SOL (Solution)** | Core content: up to 4 solutions per paper, plus framework summary | `has_sol` from RQ |
 
-Two relation classes connect the graph: **hierarchical** ($r_{\text{has\_rq}}$, $r_{\text{has\_sol}}$) map intra-paper structure; **cross-paper** relations ($r_{\text{related}}$, $r_{\text{inspired}}$) capture inter-paper knowledge evolution. An inspired edge $r_{\text{inspired}}$: $\text{SOL}_i \rightarrow \text{RQ}_j$ explicitly models latent knowledge transfer paths that are invisible to citation-based analysis.
+Two relation classes connect the graph: **hierarchical** (`r_has_rq`, `r_has_sol`) map intra-paper structure; **cross-paper** relations (`r_related`, `r_inspired`) capture inter-paper knowledge evolution. An inspired edge `r_inspired`: `SOL_i → RQ_j` explicitly models latent knowledge transfer paths that are invisible to citation-based analysis.
 
 **Innovation**: We model cross-domain inspiration as a **link prediction task** on the knowledge graph, using an RGCN encoder with DistMult decoder to discover invisible inspiration pathways across papers.
 
