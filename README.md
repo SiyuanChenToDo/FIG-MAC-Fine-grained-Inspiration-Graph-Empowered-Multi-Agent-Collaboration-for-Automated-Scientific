@@ -2,12 +2,12 @@
 
 # 🧠 FIG-MAC: A Fine-grained Inspiration Graph Empowered Multi-Agent Collaboration for Automated Scientific Hypothesis Generation
 
-### *Redefining Automated Scientific Discovery through Structured Multi-Agent Cognition and Cross-Domain Knowledge Graphs*
+### *Redefining Automated Scientific Hypothesis Generation through Structured Multi-Agent Cognition and Fine-grained Knowledge Graphs*
 
 [![Architecture](https://img.shields.io/badge/🏛️_Architecture-State--Machine--Driven-blueviolet?style=for-the-badge)]()
-[![Agents](https://img.shields.io/badge/🎭_Agents-8%20Specialized%20Roles-ff6b6b?style=for-the-badge)]()
+[![Agents](https://img.shields.io/badge/🎭_Agents-7%20Specialized%20Role%20Types-ff6b6b?style=for-the-badge)]()
 [![Reasoning](https://img.shields.io/badge/🧠_RAG-Hybrid%20%28Vector%2BGraph%29-4ecdc4?style=for-the-badge)]()
-[![Evaluation](https://img.shields.io/badge/📊_Evaluation-8--Dimensional%20Scoring-45b7d1?style=for-the-badge)]()
+[![Evaluation](https://img.shields.io/badge/📊_Evaluation-5--Dimensional%20Assessment-45b7d1?style=for-the-badge)]()
 [![Knowledge](https://img.shields.io/badge/📚_Knowledge_Graph-26K%2B_Papers-orange?style=for-the-badge)]()
 [![Novelty](https://img.shields.io/badge/✨_Novelty-+31.8%25_Improvement-success?style=for-the-badge)]()
 [![Web Demo](https://img.shields.io/badge/🌐_Web_Demo-Live-success?style=for-the-badge)]()
@@ -79,7 +79,7 @@ Automated Scientific Hypothesis Generation (ASHG) leveraging large language mode
 
 To address these limitations, we propose the Fine-grained Inspiration Graph-empowered Multi-Agent Collaboration framework (FIG-MAC) including: 
 - **(i) Fine-grained Inspiration Graph module (FIG)** , to obtain fine-grained structured knowledge representations, where nodes represent academic semantic units and edges encode heuristic relationships among them; 
-- **(ii) "Skeleton-Flesh" hybrid reasoning module** , fusing FIG-based graph path reasoning as a structural backbone with vector search as semantic enrichment, to obtain the traceable scientific conjecture paths; 
+- **(ii) ontology-guided hybrid reasoning module**, which follows the FIG ontology to construct structured reasoning paths and uses vector search to enrich them with semantic evidence, to obtain the traceable scientific conjecture paths; 
 - **(iii) role-specialized Multi-Agent framework** , inspired by real scientific teamwork, enabling a closed-loop process of scientific conjecture generation, screening, and validation. 
 
 Experimental results demonstrate that FIG-MAC significantly outperforms state-of-the-art methods on source diversity, provenance-adjusted novelty, and raw novelty.
@@ -118,19 +118,18 @@ flowchart TB
         VS <-->|Hybrid RAG| NK
     end
 
-    subgraph AgentLayer["🤖 Agent Layer - 8 Specialized Roles"]
-        subgraph StateMachine["State Machine Workflow"]
-            INIT([INIT])
+    subgraph AgentLayer["🤖 Agent Layer - 7 Specialized Role Types"]
+        subgraph StateMachine["State Machine Workflow (7 Phases)"]
             LIT[Literature Review]
             IDE[Ideation]
-            ANA[Analysis]
+            ANA[Analysis<br/>(Parallel Review)]
             SYN[Synthesis]
             REV[Review]
             DEC{Quality >=<br/>Threshold?}
             POL[Polish]
             REB[Revision]
 
-            INIT --> LIT --> IDE --> ANA --> SYN --> REV --> DEC
+            LIT --> IDE --> ANA --> SYN --> REV --> DEC
             DEC -->|Yes| POL
             DEC -->|No| REB --> SYN
         end
@@ -147,7 +146,7 @@ flowchart TB
     StateMachine --> HT
     POL --> SR
 
-    style INIT fill:#e1f5ff
+    style LIT fill:#e1f5ff
     style DEC fill:#fff3cd
     style POL fill:#d4edda
     style REB fill:#f8d7da
@@ -159,16 +158,17 @@ flowchart TB
 
 ### 1. Fine-grained Inspiration Graphs (FIG)
 
-Traditional RAG systems retrieve entire documents, losing the structural semantics of scientific knowledge. FIG decomposes papers into:
+Traditional RAG systems retrieve entire documents, losing the structural semantics of scientific knowledge. FIG decomposes each paper into **21 fine-grained semantic units**, forming a three-level **PAP–RQ–SOL** knowledge structure:
 
-| Component | Description | Example |
-|-----------|-------------|---------|
-| **Research Question (RQ)** | Core scientific inquiry | *"How can GNNs improve drug discovery?"* |
-| **Solution (Sol)** | Proposed approach/method | *"A graph attention network with..."* |
-| **Core Problem** | Fundamental challenge addressed | *"Molecular property prediction..."* |
-| **INSPIRED Edge** | Cross-domain analogical link | *Solution(A) → inspires → Paper(B)* |
+| Entity Type | Description | Relations |
+|:-----------:|:-----------:|:---------:|
+| **PAP (Paper)** | Metadata attributes: DOI, title, authors, year, conference, citation count, abstract | — |
+| **RQ (Research Question)** | Core content: up to 4 research questions per paper | `has_rq` from PAP; `has_sol` to SOL |
+| **SOL (Solution)** | Core content: up to 4 solutions per paper, plus framework summary | `has_sol` from RQ |
 
-**Innovation**: We model cross-domain inspiration as a **link prediction task** on the knowledge graph, training a GNN to predict which papers might inspire solutions to other research questions.
+Two relation classes connect the graph: **hierarchical** ($r_{\text{has\_rq}}$, $r_{\text{has\_sol}}$) map intra-paper structure; **cross-paper** relations ($r_{\text{related}}$, $r_{\text{inspired}}$) capture inter-paper knowledge evolution. An inspired edge $r_{\text{inspired}}$: $\text{SOL}_i \rightarrow \text{RQ}_j$ explicitly models latent knowledge transfer paths that are invisible to citation-based analysis.
+
+**Innovation**: We model cross-domain inspiration as a **link prediction task** on the knowledge graph, using an RGCN encoder with DistMult decoder to discover invisible inspiration pathways across papers.
 
 ```mermaid
 flowchart LR
@@ -187,50 +187,52 @@ flowchart LR
 
 ### 2. State Machine-Driven Multi-Agent Workflow
 
-Unlike simple agent chaining, FIG-MAC implements a **finite state machine** with 9 distinct states:
+Unlike simple agent chaining, FIG-MAC implements a **finite state machine** with 7 phases:
 
-| State | Agent | Function |
-|-------|-------|----------|
-| `LITERATURE` | Scholar Scour | RAG-enhanced literature synthesis |
-| `IDEATION` | Idea Igniter | Generate 3-5 novel hypotheses |
-| `ANALYSIS` | 3 Agents (Parallel) | Technical/Practical/Ethical assessment |
-| `SYNTHESIS` | Dr. Qwen Leader | Unified report generation |
-| `REVIEW` | Critic Crucible | Peer review with scoring |
-| `REVISION` | Dr. Qwen Leader | Quality-driven iteration |
-| `POLISH` | Prof. Qwen Editor | Language refinement |
-| `EVALUATION` | Final Evaluation Agent | 8-dimensional scoring |
+| Phase | Agent Role(s) | Function |
+|:-----:|:-------------:|:--------:|
+| `LITERATURE` | Research Assistants | RAG-enhanced literature retrieval and synthesis |
+| `IDEATION` | Innovators | Generate 3-5 novel scientific hypotheses |
+| `ANALYSIS` | Technical/Practical/Ethical Reviewers (Parallel) | Multi-perspective concurrent assessment |
+| `SYNTHESIS` | Coordinators | Integrate review feedback into unified report |
+| `REVIEW` | Quality Controllers | Aggregate review scoring and quality decision |
+| `REVISION` | Quality Controllers + Innovators | Iterative refinement based on reviewer feedback |
+| `POLISH` | Coordinators | Final language polish and report formatting |
 
-### 3. Iterative Quality-Driven Refinement
+### 3. Parallel Review with Confidence-Aware Aggregation
 
-A key innovation is the **integrated quality assessment** that combines:
-
-- **Internal Evaluation (25%)**: Peer review scores from Critic Crucible
-- **External Evaluation (75%)**: 8-dimensional objective assessment
+A key innovation is the **parallel multi-perspective review** where three independent reviewers (Technical, Practical, Ethical) operate concurrently, each producing a review across five dimensions: Novelty, Significance, Effectiveness, Clarity, and Feasibility. The three review vectors are aggregated via **confidence-aware softmax weighting**, where higher-confidence reviewers receive greater weight and a temperature parameter τ controls sharpness.
 
 ```python
+# Confidence-aware aggregation of parallel reviewer assessments
+def aggregate_reviews(reviews: List[ReviewVector], temperature: float = 1.0):
+    confidences = [r.confidence for r in reviews]
+    weights = softmax([c / temperature for c in confidences])
+    return sum(w * r.vector for w, r in zip(weights, reviews))
+
 # Quality-driven iteration with best-version tracking
 while current_iteration < max_iterations:
-    score = critic_crucible.review(report)
+    score = aggregate_reviews(parallel_review(report))
     if score >= quality_threshold:
-        break  # Quality achieved
+        break  # Quality achieved → transition to POLISH
     elif score > best_version['score']:
         best_version = {'content': report, 'score': score}
-    report = leader.revise(report, feedback)
+    report = quality_controller.refine(report, reviewer_feedback)
 ```
 
 **Regression Protection**: If a revision decreases quality, the system automatically rolls back to the best previous version.
 
 ---
 
-## 🦴 "Skeleton-Flesh" Hybrid Reasoning
+## 🔗 Ontology-Guided Hybrid Reasoning
 
-At the heart of FIG-MAC lies our dual-path retrieval paradigm that combines **structural skeletons** with **semantic flesh**:
+At the heart of FIG-MAC lies our ontology-guided hybrid reasoning paradigm that integrates two complementary retrieval strategies:
 
 | Component | Mechanism | Purpose | Output |
 |:---------:|:---------:|:-------:|:------:|
-| 🦴 **Skeleton** | Graph Traversal on FIG | Discover cross-domain knowledge evolution paths | Traceable inspiration chains |
-| 🥩 **Flesh** | Vector Retrieval (Qwen-emb-v2) | Enrich paths with domain-specific technical details | Semantic grounding |
-| 🔗 **Fusion** | Hybrid Integration ℐ(𝒯ᵥ, 𝒯ɢ) | Combine structural novelty with technical feasibility | Enriched context for agents |
+| 🔗 **SubgraphSkeleton** | Graph Traversal on FIG following ontology constraints | Discover cross-domain knowledge evolution paths | Traceable inspiration chains |
+| 🔍 **VectorEnrichment** | Vector Retrieval (Qwen-emb-v2) | Enrich paths with domain-specific semantic evidence | Semantic grounding |
+| ⚡ **Integration** | ℐ(ℛᵥ, ℛɢ) = SubgraphSkeleton(ℛɢ) ∪ VectorEnrichment(ℛᵥ) | Combine structural novelty with technical feasibility | Enriched context for agents |
 
 ### Path Scoring Function
 
@@ -251,7 +253,7 @@ Where:
 |:--------------:|:--------:|:---:|:-------:|:----:|
 | Vector Only | 0.385 | 0.268 | 0.156 | 0.375 |
 | Graph Only | 0.410 | 0.225 | 0.210 | 0.389 |
-| **Hybrid Skeleton-Flesh** | **0.684** | **0.535** | **0.650** | **0.291** |
+| **Hybrid Reasoning** | **0.684** | **0.535** | **0.650** | **0.291** |
 | Improvement | **+77.7%** | **+99.6%** | **+209%** | **-22.4%** |
 
 ---
@@ -264,7 +266,7 @@ We benchmark FIG-MAC against state-of-the-art automated research systems:
 
 | System | Architecture | RAG Strategy | Iteration | Avg. Quality Score |
 |--------|-------------|--------------|-----------|-------------------|
-| **FIG-MAC (Ours)** | 8-Agent State Machine | Hybrid (Vector+Graph) | ✓ | **8.42/10** |
+| **FIG-MAC (Ours)** | 7-Role State Machine | Hybrid (Vector+Graph) | ✓ | **8.42/10** |
 | AI-Scientist-v2 | Single-Agent + Tree Search | Vector Only | ✓ | 7.15/10 |
 | CoI-Agent | 2-Agent Chain | Vector Only | ✗ | 6.83/10 |
 | Virtual-Scientists | Multi-Agent (Scope-based) | Vector Only | ✗ | 6.91/10 |
@@ -276,10 +278,10 @@ To validate design choices, we conduct ablation experiments across 8 configurati
 
 | Config | Vector RAG | Graph RAG | Multi-Agent | Avg Score |
 |--------|-----------|-----------|-------------|-----------|
-| Full System | ✓ | ✓ | ✓ (8 agents) | **8.42** |
-| Vector Only | ✓ | ✗ | ✓ (8 agents) | 7.89 |
-| Graph Only | ✗ | ✓ | ✓ (8 agents) | 7.56 |
-| No RAG | ✗ | ✗ | ✓ (8 agents) | 6.23 |
+| Full System | ✓ | ✓ | ✓ (7 role types) | **8.42** |
+| Vector Only | ✓ | ✗ | ✓ (7 role types) | 7.89 |
+| Graph Only | ✗ | ✓ | ✓ (7 role types) | 7.56 |
+| No RAG | ✗ | ✗ | ✓ (7 role types) | 6.23 |
 | Single Agent + Full RAG | ✓ | ✓ | ✗ (1 agent) | 5.71 |
 
 **Key Findings**:
@@ -298,7 +300,7 @@ To validate design choices, we conduct ablation experiments across 8 configurati
 
 ### 🎖️ Statistical Significance
 
-Paired Wilcoxon signed-rank tests across 150 RQs confirm all improvements are statistically significant (p < 0.001) with large effect sizes (Cohen's d > 0.8).
+Paired Wilcoxon signed-rank tests across 150 RQs (Shapiro-Wilk test confirmed non-normal distributions, p < 0.05) confirm all improvements are statistically significant (p < 0.001) with medium-to-very-large effect sizes (Cohen's d = 0.79–2.77). After Bonferroni correction and Holm adjustment, all p-values remain significant (>0.9 statistical power for medium effects).
 
 ### 📊 Detailed Evaluation Framework
 
@@ -316,18 +318,17 @@ Paired Wilcoxon signed-rank tests across 150 RQs confirm all improvements are st
 - **Source Diversity (U_src)**: Captures cross-domain retrieval diversity
 - **Adjusted Novelty (P)**: ON_raw × [γ(1-S_src) + (1-γ)U_src]
 
-**🎭 Subjective Quality Assessment** (LLM-evaluated 1-10 scale):
+**🎭 Subjective Quality Assessment** (LLM-evaluated 1-10 scale, matching ASHG evaluation methodology):
 
-| Dimension | Weight | Description |
-|:---------:|:------:|:-----------:|
-| 🆕 Novelty | 100% | Innovation degree vs. existing work |
-| 🎯 Significance | 100% | Potential impact on the field |
-| ⚡ Effectiveness | 100% | Expected performance improvement |
-| 🎨 Engagement | 100% | Reader interest and accessibility |
-| ✅ Feasibility | 100% | Implementation practicality |
-| 📖 Clarity | 50% | Expressive precision |
-| 🏗️ Structure | 50% | Logical organization |
-| ✂️ Conciseness | 50% | Information density |
+| Dimension | Description |
+|:---------:|:-----------:|
+| 🆕 Novelty | Innovation degree vs. existing work |
+| 🎯 Significance | Potential scientific impact |
+| ⚡ Effectiveness | Expected performance and validity |
+| 📖 Clarity | Expressive precision and logical organization |
+| ✅ Feasibility | Implementation practicality and empirical verifiability |
+
+*Human evaluation validation: 5 graduate-level reviewers independently scored all hypotheses (33.3% overlap for inter-rater reliability). Strong inter-rater agreement (Agree±1 ≥ 86%) and significant rank correlation (p < 0.05 for 4/5 dimensions) confirm the validity of LLM-based comparisons.*
 
 ---
 
@@ -352,7 +353,7 @@ Paired Wilcoxon signed-rank tests across 150 RQs confirm all improvements are st
 | 🎯 Hits@3 | 0.5241 | 0.5278 |
 | 🎯 Hits@10 | 0.7892 | 0.7914 |
 
-*Trained for 30 epochs on NVIDIA RTX 5090 (32GB)*
+*Trained for 30 epochs on NVIDIA RTX 4090 GPUs*
 
 ### 🌐 Cross-Model Generalization
 
@@ -381,10 +382,10 @@ FIG-MAC achieves consistent improvements across diverse LLM backbones:
 
 | 🎯 Feature | 💡 Description | 🚀 Impact |
 |:----------:|:--------------:|:---------:|
-| 🦴 **Skeleton-Flesh Reasoning** | Graph paths + Vector enrichment | +77% novelty improvement |
-| 🎭 **8 Specialized Agents** | Role-based collaboration | +2.19 quality points |
+| 🔗 **Ontology-Guided Hybrid Reasoning** | Graph traversal + Vector enrichment | +77% novelty improvement |
+| 🎭 **7 Specialized Role Types** | Role-based collaboration | +2.19 quality points |
 | 🔄 **Iterative Refinement** | Quality-driven feedback loop | +1.34 final quality boost |
-| 📊 **8-Dimensional Evaluation** | Objective + Subjective metrics | Publication-ready assessment |
+| 📊 **Multi-Dimensional Evaluation** | Objective + Subjective metrics | Publication-ready assessment with human validation |
 | 🌐 **Cross-Model Support** | Mixtral, LLaMA, Qwen | Framework robustness |
 | ⚡ **Regression Protection** | Best-version tracking | Quality guarantee |
 
@@ -431,8 +432,8 @@ python -c "import uvicorn; from app import app; uvicorn.run(app, host='0.0.0.0',
 ### UI Highlights
 
 - **🎨 Glassmorphism Design** — Premium frosted-glass interface with animated particle background
-- **🎯 Agent Round-Table** — Live visualization of 8 agents collaborating in real-time
-- **📊 Interactive Charts** — Radar charts (8-dimension quality) and bar charts (agent contribution) via Chart.js
+- **🎯 Agent Round-Table** — Live visualization of specialized agents collaborating in real-time
+- **📊 Interactive Charts** — Radar charts (5-dimension quality assessment) and bar charts (agent contribution) via Chart.js
 - **🧮 LaTeX Math Rendering** — Publication-ready formulas with KaTeX
 - **📱 Responsive Layout** — Works on desktop and tablet
 
@@ -554,7 +555,7 @@ fig-mac/
 │
 ├── Myexamples/                  # Core modules
 │   ├── agents/                  # Agent definitions
-│   │   ├── graph_agents/        # 8 specialized agent configs
+│   │   ├── graph_agents/        # Specialized agent configurations
 │   │   ├── camel_native_agent.py
 │   │   └── final_evaluation_agent.py
 │   │
@@ -577,13 +578,13 @@ fig-mac/
 
 | Phase | Primary Role | Supporting Roles | Output |
 |:-----:|:------------:|:----------------:|:------:|
-| 📖 Literature | Scholar Scour | Vector Store, Neo4j KG | Evidence synthesis |
-| 💭 Ideation | Idea Igniter | Research Assistant | 3-5 candidate hypotheses |
-| 🔍 Analysis | 3 Reviewers (Parallel) | Technical/Practical/Ethical | Multi-perspective assessment |
-| 🎨 Synthesis | Dr. Qwen Leader | All reviewers | Unified hypothesis report |
-| ✅ Review | Critic Crucible | Leader (feedback receiver) | Quality score + feedback |
-| 🔄 Revision | Dr. Qwen Leader | Editor | Improved hypothesis |
-| ✨ Polish | Prof. Qwen Editor | Leader | Publication-ready report |
+| 📖 Literature | Research Assistants | Vector Store, Neo4j KG | Evidence synthesis |
+| 💭 Ideation | Innovators | Research Assistants | 3-5 candidate hypotheses |
+| 🔍 Analysis | Technical/Practical/Ethical Reviewers (Parallel) | — | Multi-perspective assessment |
+| 🎨 Synthesis | Coordinators | All reviewers | Unified hypothesis report |
+| ✅ Review | Quality Controllers | Coordinators | Quality score + structured feedback |
+| 🔄 Revision | Quality Controllers + Innovators | Coordinators | Improved hypothesis |
+| ✨ Polish | Coordinators | Quality Controllers | Publication-ready report |
 
 ---
 
@@ -598,17 +599,14 @@ Iterations Performed: 2/3
 Quality Progress: 7.5 → 8.5 → 9.0
 Final Quality Score: 9.0/10
 
-# 8-Dimensional Evaluation
-Relevance: 9.0/10           (weight: 100%)
-Technical Accuracy: 8.0/10  (weight: 100%)
-Originality: 9.0/10         (weight: 100%)
-Feasibility: 7.0/10         (weight: 100%)
-Engagement: 8.0/10          (weight: 100%)
-Clarity: 8.0/10             (weight: 50%)
-Structure: 9.0/10           (weight: 50%)
-Conciseness: 7.0/10         (weight: 50%)
+# 5-Dimensional Quality Assessment
+Novelty: 9.0/10         (innovation vs. existing work)
+Significance: 8.0/10    (potential scientific impact)
+Effectiveness: 8.0/10   (expected validity)
+Clarity: 8.0/10          (expressive precision)
+Feasibility: 7.0/10      (empirical verifiability)
 
-Final Rating: 8.12/10 (25% Internal + 75% External)
+Final Rating: 8.0/10 (confidence-aware softmax aggregation)
 ```
 
 ---
@@ -617,8 +615,8 @@ Final Rating: 8.12/10 (25% Internal + 75% External)
 
 ```bibtex
 @article{figmac2026,
-  title={FIG-MAC: Fine-grained Inspiration Graph Empowered Multi-Agent Collaboration
-         for Automated Scientific Discovery},
+  title={FIG-MAC: A Fine-grained Inspiration Graph Empowered Multi-Agent Collaboration
+         for Automated Scientific Hypothesis Generation},
   author={Anonymous},
   journal={Submitted to Conference},
   year={2026}
